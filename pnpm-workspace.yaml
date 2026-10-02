@@ -1,5 +1,13 @@
 packages:
   - '.'
+
+overrides:
+  vite: 6.3.5
+
+allowBuilds:
+  '@tailwindcss/oxide': false
+  esbuild: false
+
 supportedArchitectures:
   os:
     - linux
@@ -8,3 +16,4 @@ supportedArchitectures:
     - arm64
   libc:
     - glibc
+

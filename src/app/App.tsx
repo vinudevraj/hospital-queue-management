@@ -263,7 +263,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
   ];
 
   const testimonials = [
-    { name: "Dr. Ananya Rao", role: "Medical Director, Apollo Clinics", text: "Turnwell reduced our average patient wait time by 40%. The AI predictions are remarkably accurate and our staff adopted it within a day.", stars: 5 },
+    { name: "Dr. Ananya Rao", role: "Medical Director, Apollo Clinics", text: "Hospital Queue Management reduced our average patient wait time by 40%. The AI predictions are remarkably accurate and our staff adopted it within a day.", stars: 5 },
     { name: "Suresh Menon", role: "Operations Head, Fortis Healthcare", text: "Our patients love waiting at the café instead of the waiting room. Patient satisfaction scores hit an all-time high last quarter.", stars: 5 },
     { name: "Priya Krishnamurthy", role: "Clinic Administrator, Manipal", text: "The reception dashboard is intuitive and powerful. We went live in under 2 hours. Zero training required.", stars: 5 },
   ];
@@ -277,7 +277,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
               <Heart size={15} className="text-white" />
             </div>
-            <span className="font-black text-xl" style={{ color: "#283040" }}>Turnwell</span>
+            <span className="font-black text-xl" style={{ color: "#283040" }}>Hospital Queue Management</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm font-medium" style={{ color: "#5a7a8a" }}>
             <a href="#features" className="hover:text-[#3F8EAC] transition-colors">Features</a>
@@ -286,7 +286,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => onNav("reception")} className="text-sm font-semibold hover:text-[#3F8EAC] transition-colors" style={{ color: "#5a7a8a" }}>Sign In</button>
-            <button onClick={() => onNav("reception")} className="px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg transition-all" style={{ backgroundColor: "#3F8EAC" }}>Book Demo</button>
+            <button onClick={() => onNav("reception")} className="px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg transition-all" style={{ backgroundColor: "#3F8EAC" }}>Get Started</button>
           </div>
         </div>
       </nav>
@@ -296,25 +296,25 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-6" style={{ backgroundColor: "#3F8EAC15", color: "#3F8EAC", border: "1px solid #3F8EAC30" }}>
-              <Zap size={11} /> AI-Powered Queue Management · Trusted by 500+ Clinics
+              <Zap size={11} /> AI-Powered Hospital Queue Management
             </div>
             <h1 className="text-5xl lg:text-6xl font-black leading-tight mb-5" style={{ color: "#283040" }}>
-              Stop Waiting.<br />
-              <span style={{ color: "#3F8EAC" }}>Start Living.</span>
+              Predict Wait Time.<br />
+              <span style={{ color: "#3F8EAC" }}>Manage the Queue.</span>
             </h1>
             <p className="text-lg leading-relaxed mb-8 max-w-lg" style={{ color: "#5a7a8a" }}>
-              Real-time clinic queues, intelligent wait predictions, and return-when-ready notifications. Healthcare that knows when it&apos;s your turn.
+              An AI-powered hospital queue management system that predicts patient waiting time using hospital visit and staffing data.
             </p>
             <div className="flex flex-wrap gap-3">
               <button onClick={() => onNav("reception")} className="px-6 py-3.5 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2" style={{ backgroundColor: "#3F8EAC" }}>
-                Book Demo <ArrowRight size={16} />
+                Get Started <ArrowRight size={16} />
               </button>
               <button onClick={() => onNav("patient")} className="px-6 py-3.5 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all" style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}>
-                View Live Queue
+                Patient Prediction
               </button>
             </div>
             <div className="mt-10 flex gap-8">
-              {[{ v: "40%", l: "Less Wait Time" }, { v: "94%", l: "AI Accuracy" }, { v: "500+", l: "Clinics Served" }].map(s => (
+              {[{ v: "5,000", l: "Patient Records" }, { v: "50", l: "Providers" }, { v: "10", l: "Departments" }].map(s => (
                 <div key={s.l}>
                   <div className="text-2xl font-black" style={{ color: "#3F8EAC" }}>{s.v}</div>
                   <div className="text-xs font-medium mt-0.5" style={{ color: "#7FB0CB" }}>{s.l}</div>
@@ -401,35 +401,6 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section id="testimonials" className="py-20 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-4xl font-black mb-4" style={{ color: "#283040" }}>Trusted by Healthcare Leaders</h2>
-            <p style={{ color: "#5a7a8a" }}>Join 500+ clinics transforming patient experiences with Turnwell.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map(t => (
-              <GlassCard key={t.name} className="p-6">
-                <div className="flex gap-0.5 mb-4">
-                  {Array.from({ length: t.stars }).map((_, i) => <Star key={i} size={15} fill="#F59E0B" stroke="#F59E0B" />)}
-                </div>
-                <p className="text-sm leading-relaxed mb-6" style={{ color: "#283040" }}>&ldquo;{t.text}&rdquo;</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: "#3F8EAC" }}>
-                    {t.name.split(" ").map(w => w[0]).join("").slice(0, 2)}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm" style={{ color: "#283040" }}>{t.name}</div>
-                    <div className="text-xs" style={{ color: "#7FB0CB" }}>{t.role}</div>
-                  </div>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="py-20 px-6">
         <div className="max-w-4xl mx-auto">
@@ -438,7 +409,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
               <Heart size={28} className="text-white" />
             </div>
             <h2 className="text-4xl font-black mb-4" style={{ color: "#283040" }}>Ready to transform your clinic?</h2>
-            <p className="mb-8 max-w-xl mx-auto" style={{ color: "#5a7a8a" }}>Join 500+ clinics already using Turnwell to cut wait times and improve patient satisfaction scores.</p>
+            <p className="mb-8 max-w-xl mx-auto" style={{ color: "#5a7a8a" }}>Use patient and hospital information to estimate waiting time and support efficient queue management.</p>
             <div className="flex flex-wrap justify-center gap-4">
               <button onClick={() => onNav("reception")} className="px-8 py-4 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all flex items-center gap-2" style={{ backgroundColor: "#3F8EAC" }}>
                 Start Free Trial <ArrowRight size={18} />
@@ -458,9 +429,9 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
               <Heart size={11} className="text-white" />
             </div>
-            <span className="font-black text-sm" style={{ color: "#283040" }}>Turnwell</span>
+            <span className="font-black text-sm" style={{ color: "#283040" }}>Hospital Queue Management</span>
           </div>
-          <p className="text-xs" style={{ color: "#7FB0CB" }}>© 2024 Turnwell Health Technologies. Healthcare that knows when it&apos;s your turn.</p>
+          <p className="text-xs" style={{ color: "#7FB0CB" }}>© 2024 Hospital Queue Management Health Technologies. Healthcare that knows when it&apos;s your turn.</p>
           <div className="flex gap-4 text-xs font-medium" style={{ color: "#7FB0CB" }}>
             <a href="#" className="hover:text-[#3F8EAC] transition-colors">Privacy</a>
             <a href="#" className="hover:text-[#3F8EAC] transition-colors">Terms</a>
@@ -738,155 +709,476 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
 // ─── Patient Tracking Portal ──────────────────────────────────────────────────
 
-function PatientPage({ patients }: { patients: Patient[] }) {
-  const [tokenInput, setTokenInput] = useState("");
-  const [found, setFound] = useState<Patient | null>(null);
-  const [searched, setSearched] = useState(false);
+function PatientPage() {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [predictionGeneratedAt, setPredictionGeneratedAt] = useState<Date | null>(null);
 
-  const doSearch = () => {
-    const p = patients.find(p => p.token.toLowerCase() === tokenInput.toLowerCase().trim());
-    setFound(p || null);
-    setSearched(true);
+  const [formData, setFormData] = useState({
+    AgeGroup: "Adult (36-60)",
+    Department: "Internal Medicine",
+    AppointmentType: "New Patient",
+    ArrivalMethod: "Walk-in",
+    TriageCategory: "Non-urgent",
+  });
+
+  const [prediction, setPrediction] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const visitDate = currentTime.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const visitTime = currentTime.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  const handlePredict = async () => {
+    setLoading(true);
+    setPrediction(null);
+    setError("");
+
+    const predictionTime = new Date();
+    setPredictionGeneratedAt(predictionTime);
+
+    const dayNames = [
+      "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+    ];
+
+    const monthNames = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+
+    const arrivalHour = predictionTime.getHours();
+    const dayOfWeek = dayNames[predictionTime.getDay()];
+    const month = monthNames[predictionTime.getMonth()];
+    const isWeekend =
+      predictionTime.getDay() === 0 ||
+      predictionTime.getDay() === 6;
+
+    const facilityOccupancyRate = 0.75;
+    const providersOnShift = 10;
+    const nursesOnShift = 20;
+
+    const staffToPatientRatio =
+      providersOnShift / (providersOnShift + nursesOnShift);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/predict",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            AgeGroup: formData.AgeGroup,
+            Department: formData.Department,
+            AppointmentType: formData.AppointmentType,
+            ArrivalMethod: formData.ArrivalMethod,
+            TriageCategory: formData.TriageCategory,
+            FacilityOccupancyRate: facilityOccupancyRate,
+            ProvidersOnShift: providersOnShift,
+            NursesOnShift: nursesOnShift,
+            StaffToPatientRatio: staffToPatientRatio,
+            ArrivalHour: arrivalHour,
+            DayOfWeek: dayOfWeek,
+            IsWeekend: isWeekend,
+            Month: month,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to predict waiting time."
+        );
+      }
+
+      setPrediction(data.predicted_wait_time_minutes);
+    } catch (err) {
+      setError(
+        "Unable to connect to the prediction server. Please make sure the Flask backend is running."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const waitingList = patients.filter(p => p.status === "waiting");
-  const patientsAhead = found ? waitingList.filter(p => p.waitMinutes < found.waitMinutes).length : 0;
-  const isNearTurn = found && found.status === "waiting" && patientsAhead <= 3;
-
-  const timelineSteps = [
-    { label: "Registered", done: true },
-    { label: "In Queue", done: !!found && found.status !== "waiting" },
-    { label: "Your Turn", done: !!found && (found.status === "consulting" || found.status === "completed") },
-    { label: "Completed", done: !!found && found.status === "completed" },
-  ];
+  const updateField = (
+    field: keyof typeof formData,
+    value: string
+  ) => {
+    setFormData((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  };
 
   return (
-    <div className="min-h-screen py-10 px-4" style={{ backgroundColor: "#DDEEF8" }}>
-      <div className="max-w-lg mx-auto">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: "#3F8EAC" }}>
-            <QrCode size={30} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-black mb-2" style={{ color: "#283040" }}>Track Your Queue</h1>
-          <p className="text-sm" style={{ color: "#5a7a8a" }}>Enter your token number to see your real-time position</p>
-        </div>
+    <div className="min-h-screen px-6 py-10">
+      <div className="max-w-5xl mx-auto">
 
-        {/* Token Input */}
-        <GlassCard className="p-6 mb-5">
-          <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#5a7a8a" }}>Your Token Number</label>
-          <div className="flex gap-3 mt-2">
-            <input
-              value={tokenInput}
-              onChange={e => setTokenInput(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === "Enter" && doSearch()}
-              placeholder="e.g. T003"
-              className="flex-1 px-4 py-3 rounded-xl text-lg font-mono font-black outline-none"
-              style={{ border: "1.5px solid rgba(168,205,229,0.5)", backgroundColor: "rgba(255,255,255,0.7)", color: "#283040" }}
-            />
-            <button onClick={doSearch} className="px-5 py-3 rounded-xl font-bold text-white hover:shadow-lg hover:-translate-y-0.5 transition-all" style={{ backgroundColor: "#3F8EAC" }}>
-              <Search size={20} />
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <span className="text-xs" style={{ color: "#7FB0CB" }}>Try:</span>
-            {["T001", "T002", "T003", "T005", "T008"].map(t => (
-              <button key={t} onClick={() => setTokenInput(t)} className="text-xs px-2.5 py-1 rounded-lg font-mono font-bold hover:bg-[#3F8EAC]/10 transition-colors" style={{ color: "#3F8EAC", border: "1px solid rgba(63,142,172,0.25)" }}>{t}</button>
-            ))}
-          </div>
-        </GlassCard>
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-3">
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#E8F4F8" }}
+            >
+              <Brain
+                className="w-6 h-6"
+                style={{ color: "#3F8EAC" }}
+              />
+            </div>
 
-        {/* Near-turn alert */}
-        {isNearTurn && (
-          <div className="mb-5 p-4 rounded-2xl border-l-4" style={{ backgroundColor: "rgba(183,74,66,0.06)", borderLeftColor: "#B74A42" }}>
-            <div className="flex items-start gap-3">
-              <Bell size={20} style={{ color: "#B74A42" }} className="mt-0.5 animate-bounce flex-shrink-0" />
-              <div>
-                <div className="font-bold text-sm" style={{ color: "#B74A42" }}>Your turn is approaching!</div>
-                <div className="text-xs mt-0.5" style={{ color: "#5a7a8a" }}>
-                  Only {patientsAhead} patient{patientsAhead !== 1 ? "s" : ""} ahead. Please return to the clinic now.
-                </div>
-              </div>
+            <div>
+              <h1
+                className="text-3xl font-bold"
+                style={{ color: "#173B4D" }}
+              >
+                Predict Your Waiting Time
+              </h1>
+
+              <p
+                className="mt-1"
+                style={{ color: "#5a7a8a" }}
+              >
+                Enter your visit details to estimate your hospital waiting time.
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
-        {searched && found && (
-          <div className="space-y-4">
-            {/* Status Card */}
-            <GlassCard className="p-6">
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <div className="font-mono text-2xl font-black mb-1" style={{ color: "#3F8EAC" }}>{found.token}</div>
-                  <div className="text-xl font-bold" style={{ color: "#283040" }}>{found.name}</div>
-                  <div className="text-sm mt-0.5" style={{ color: "#7FB0CB" }}>Age {found.age} · {found.condition}</div>
-                </div>
-                <div className="flex flex-col gap-1.5 items-end">
-                  <StatusBadge status={found.status} />
-                  {found.isEmergency && <StatusBadge status="emergency" isEmergency />}
-                </div>
-              </div>
+        <div
+          className="rounded-2xl p-6 mb-6 border"
+          style={{
+            backgroundColor: "#F7FBFC",
+            borderColor: "#D9EAF0",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-5">
+            <Clock
+              className="w-5 h-5"
+              style={{ color: "#3F8EAC" }}
+            />
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Patients Ahead", value: String(patientsAhead) },
-                  { label: "Est. Wait Time", value: found.eta },
-                  { label: "Doctor Assigned", value: found.doctor },
-                  { label: "Registered At", value: found.registeredAt },
-                ].map(m => (
-                  <div key={m.label} className="p-3 rounded-xl" style={{ backgroundColor: "rgba(168,205,229,0.15)" }}>
-                    <div className="text-xs font-medium mb-1" style={{ color: "#5a7a8a" }}>{m.label}</div>
-                    <div className="font-bold text-sm" style={{ color: "#283040" }}>{m.value}</div>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
-
-            {/* Timeline */}
-            <GlassCard className="p-6">
-              <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Queue Timeline</h3>
-              <div className="relative">
-                <div className="absolute left-4 top-4 bottom-4 w-0.5" style={{ backgroundColor: "rgba(168,205,229,0.4)" }} />
-                <div className="space-y-6">
-                  {timelineSteps.map((step, i) => {
-                    const isActive = !step.done && (i === 0 || timelineSteps[i - 1].done);
-                    return (
-                      <div key={step.label} className="flex items-center gap-4 relative">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center z-10 flex-shrink-0" style={{ backgroundColor: step.done ? "#3F8EAC" : isActive ? "white" : "rgba(168,205,229,0.3)", border: step.done ? "none" : isActive ? "2px solid #3F8EAC" : "2px solid rgba(168,205,229,0.5)" }}>
-                          {step.done ? <Check size={13} className="text-white" /> : isActive ? <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: "#3F8EAC" }} /> : null}
-                        </div>
-                        <span className="text-sm font-semibold" style={{ color: step.done || isActive ? "#283040" : "#A8CDE5" }}>{step.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </GlassCard>
-
-            {/* QR Code */}
-            <GlassCard className="p-6 text-center">
-              <h3 className="font-bold mb-4" style={{ color: "#283040" }}>Your Queue QR Code</h3>
-              <div className="flex justify-center mb-2">
-                <QRVisual token={found.token} />
-              </div>
-              <p className="text-xs" style={{ color: "#7FB0CB" }}>Show this at reception or share your queue link</p>
-            </GlassCard>
+            <h2
+              className="text-lg font-bold"
+              style={{ color: "#173B4D" }}
+            >
+              Your Visit Details
+            </h2>
           </div>
-        )}
 
-        {searched && !found && (
-          <GlassCard className="p-10 text-center">
-            <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: "#B74A42" }} />
-            <div className="font-bold text-lg mb-2" style={{ color: "#283040" }}>Token not found</div>
-            <div className="text-sm" style={{ color: "#5a7a8a" }}>Please double-check your token number and try again.</div>
-          </GlassCard>
-        )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div
+              className="rounded-xl p-4 border"
+              style={{
+                backgroundColor: "white",
+                borderColor: "#D9EAF0",
+              }}
+            >
+              <p
+                className="text-xs font-semibold uppercase tracking-wide mb-1"
+                style={{ color: "#7A929E" }}
+              >
+                Visit Date
+              </p>
+
+              <p
+                className="text-lg font-semibold"
+                style={{ color: "#173B4D" }}
+              >
+                {visitDate}
+              </p>
+
+              <p
+                className="text-xs mt-1"
+                style={{ color: "#7A929E" }}
+              >
+                Automatically detected
+              </p>
+            </div>
+
+            <div
+              className="rounded-xl p-4 border"
+              style={{
+                backgroundColor: "white",
+                borderColor: "#D9EAF0",
+              }}
+            >
+              <p
+                className="text-xs font-semibold uppercase tracking-wide mb-1"
+                style={{ color: "#7A929E" }}
+              >
+                Current Time
+              </p>
+
+              <p
+                className="text-lg font-semibold"
+                style={{ color: "#173B4D" }}
+              >
+                {visitTime}
+              </p>
+
+              <p
+                className="text-xs mt-1"
+                style={{ color: "#7A929E" }}
+              >
+                Updates automatically
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl p-6 border"
+          style={{
+            backgroundColor: "white",
+            borderColor: "#D9EAF0",
+          }}
+        >
+          <h2
+            className="text-lg font-bold mb-6"
+            style={{ color: "#173B4D" }}
+          >
+            Patient Information
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <div>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: "#365766" }}
+              >
+                Age Group
+              </label>
+
+              <select
+                value={formData.AgeGroup}
+                onChange={(e) =>
+                  updateField("AgeGroup", e.target.value)
+                }
+                className="w-full px-4 py-3 rounded-xl border outline-none"
+                style={{ borderColor: "#C9DEE6" }}
+              >
+                <option>Adult (36-60)</option>
+                <option>Young Adult (18-35)</option>
+                <option>Senior (61+)</option>
+                <option>Pediatric (0-17)</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: "#365766" }}
+              >
+                Department
+              </label>
+
+              <select
+                value={formData.Department}
+                onChange={(e) =>
+                  updateField("Department", e.target.value)
+                }
+                className="w-full px-4 py-3 rounded-xl border outline-none"
+                style={{ borderColor: "#C9DEE6" }}
+              >
+                <option>Orthopedics</option>
+                <option>Cardiology</option>
+                <option>General Surgery</option>
+                <option>Emergency</option>
+                <option>Radiology</option>
+                <option>Obstetrics</option>
+                <option>Neurology</option>
+                <option>Oncology</option>
+                <option>Pediatrics</option>
+                <option>Internal Medicine</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: "#365766" }}
+              >
+                Appointment Type
+              </label>
+
+              <select
+                value={formData.AppointmentType}
+                onChange={(e) =>
+                  updateField("AppointmentType", e.target.value)
+                }
+                className="w-full px-4 py-3 rounded-xl border outline-none"
+                style={{ borderColor: "#C9DEE6" }}
+              >
+                <option>New Patient</option>
+                <option>Specialist Referral</option>
+                <option>Urgent Care</option>
+                <option>Follow-up</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: "#365766" }}
+              >
+                Arrival Method
+              </label>
+
+              <select
+                value={formData.ArrivalMethod}
+                onChange={(e) =>
+                  updateField("ArrivalMethod", e.target.value)
+                }
+                className="w-full px-4 py-3 rounded-xl border outline-none"
+                style={{ borderColor: "#C9DEE6" }}
+              >
+                <option>Walk-in</option>
+                <option>Scheduled</option>
+                <option>Emergency</option>
+              </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: "#365766" }}
+              >
+                Triage Category
+              </label>
+
+              <select
+                value={formData.TriageCategory}
+                onChange={(e) =>
+                  updateField("TriageCategory", e.target.value)
+                }
+                className="w-full px-4 py-3 rounded-xl border outline-none"
+                style={{ borderColor: "#C9DEE6" }}
+              >
+                <option>Non-urgent</option>
+                <option>Urgent</option>
+                <option>Semi-urgent</option>
+                <option>Emergency</option>
+                <option>Immediate</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={handlePredict}
+            disabled={loading}
+            className="w-full mt-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: "#3F8EAC" }}
+          >
+            <Brain className="w-5 h-5" />
+
+            {loading
+              ? "Predicting Waiting Time..."
+              : "Predict My Waiting Time"}
+          </button>
+
+          {error && (
+            <div
+              className="mt-5 p-4 rounded-xl text-sm"
+              style={{
+                backgroundColor: "#FDECEC",
+                color: "#A33A35",
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {prediction !== null && !error && (
+            <div
+              className="mt-8 rounded-2xl p-8 text-center border"
+              style={{
+                backgroundColor: "#F3FAFC",
+                borderColor: "#B9DDE8",
+              }}
+            >
+              <p
+                className="text-sm font-semibold mb-2"
+                style={{ color: "#5A7A8A" }}
+              >
+                Estimated Waiting Time
+              </p>
+
+              <div
+                className="text-5xl font-bold"
+                style={{ color: "#3F8EAC" }}
+              >
+                {prediction.toFixed(2)}
+              </div>
+
+              <p
+                className="mt-2 font-medium"
+                style={{ color: "#365766" }}
+              >
+                minutes
+              </p>
+
+              <p
+                className="text-sm mt-5"
+                style={{ color: "#7A929E" }}
+              >
+                Estimated using the hospital waiting-time prediction model.
+              </p>
+
+              <div
+                className="mt-5 pt-5 border-t text-sm"
+                style={{ borderColor: "#D9EAF0" }}
+              >
+                <span style={{ color: "#7A929E" }}>
+                  Prediction generated at:
+                </span>{" "}
+
+                <span
+                  className="font-semibold"
+                  style={{ color: "#365766" }}
+                >
+                  {predictionGeneratedAt
+                    ? predictionGeneratedAt.toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: true,
+                      })
+                    : ""}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-// ─── Smart ETA Page ───────────────────────────────────────────────────────────
-
 function ETAPage() {
   const insights = [
     { text: "Current wait time is 23% lower than Tuesday's average for this hour.", good: true },
@@ -1260,7 +1552,7 @@ function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void })
           <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
             <Heart size={14} className="text-white" />
           </div>
-          <span className="font-black text-lg" style={{ color: "#283040" }}>Turnwell</span>
+          <span className="font-black text-lg" style={{ color: "#283040" }}>Hospital Queue Management</span>
         </button>
 
         <div className="hidden md:flex items-center gap-1">
@@ -1307,7 +1599,7 @@ export default function App() {
       <div className={page !== "landing" ? "pt-16" : ""}>
         {page === "landing" && <LandingPage onNav={setPage} />}
         {page === "reception" && <ReceptionPage patients={patients} setPatients={setPatients} />}
-        {page === "patient" && <PatientPage patients={patients} />}
+        {page === "patient" && <PatientPage />}
         {page === "eta" && <ETAPage />}
         {page === "doctors" && <DoctorsPage patients={patients} />}
         {page === "analytics" && <AnalyticsPage />}
