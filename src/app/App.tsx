@@ -58,11 +58,7 @@ const COMPLETED_TODAY = [
   { token: "C008", name: "Padmini Sinha", doctor: "Dr. Sharma", duration: "17 min", at: "09:58 AM" },
 ];
 
-const DOCTORS_INFO = [
-  { name: "Dr. Mehta", specialty: "General Medicine", initials: "RM", color: "#3F8EAC", avgTime: 12, today: 18, status: "Consulting" },
-  { name: "Dr. Sharma", specialty: "Cardiology", initials: "AS", color: "#7FB0CB", avgTime: 18, today: 14, status: "Available" },
-  { name: "Dr. Patel", specialty: "Orthopedics", initials: "VP", color: "#B74A42", avgTime: 15, today: 12, status: "Available" },
-];
+
 
 // ─── Chart Data ───────────────────────────────────────────────────────────────
 const hourlyVolume = [
@@ -1301,107 +1297,256 @@ function ETAPage() {
 // ─── Multi-Doctor Queue View ──────────────────────────────────────────────────
 
 function DoctorsPage({ patients }: { patients: Patient[] }) {
-  const getDrQueue = (name: string) => patients.filter(p => p.doctor === name && p.status === "waiting");
+  type DbDoctor = {
+    doctor_id: string;
+    doctor_name: string;
+    department: string;
+    specialization: string;
+    status: string;
+  };
 
-  const doctors = DOCTORS_INFO.map(d => ({
-    ...d,
-    currentWaiting: getDrQueue(d.name).length,
-    queuePatients: getDrQueue(d.name),
-    queueTime: getDrQueue(d.name).length * d.avgTime,
-    load: Math.min(Math.round(getDrQueue(d.name).length / 8 * 100), 100),
-  }));
+  const [doctors, setDoctors] = useState<DbDoctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const chartData = doctors.map(d => ({
-    name: d.name.split(" ")[1],
-    "Served Today": d.today,
-    "Waiting Now": d.currentWaiting,
-    "Avg Time (min)": d.avgTime,
-  }));
+  useEffect(() => {
+    const loadDoctors = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:5000/doctors");
+
+        if (!response.ok) {
+          throw new Error("Failed to load doctors");
+        }
+
+        const data = await response.json();
+        setDoctors(data);
+      } catch (err) {
+        setError("Unable to load doctor information from the server.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDoctors();
+  }, []);
+
+  const getDrQueue = (name: string) =>
+    patients.filter(
+      p => p.doctor === name && p.status === "waiting"
+    );
+
+  const getStatusColor = (status: string) => {
+    if (status === "Available") return "#16a34a";
+    if (status === "Busy") return "#D97706";
+    return "#B74A42";
+  };
+
+  const getInitials = (name: string) => {
+    const words = name.replace("Dr.", "").trim().split(/\s+/);
+    return words
+      .slice(0, 2)
+      .map(word => word[0])
+      .join("")
+      .toUpperCase();
+  };
+
+  const statusCounts = [
+    {
+      name: "Available",
+      count: doctors.filter(d => d.status === "Available").length,
+    },
+    {
+      name: "Busy",
+      count: doctors.filter(d => d.status === "Busy").length,
+    },
+    {
+      name: "On Leave",
+      count: doctors.filter(d => d.status === "On Leave").length,
+    },
+  ];
 
   return (
     <div className="min-h-screen py-8 px-4" style={{ backgroundColor: "#DDEEF8" }}>
       <div className="max-w-7xl mx-auto">
+
         <div className="mb-8">
-          <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>Multi-Doctor Queue View</h1>
-          <p className="text-sm" style={{ color: "#7FB0CB" }}>Compare doctor availability and live queue status</p>
+          <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>
+            Doctors
+          </h1>
+          <p className="text-sm" style={{ color: "#7FB0CB" }}>
+            Doctor information loaded from the hospital database
+          </p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          {doctors.map(doc => (
-            <GlassCard key={doc.name} className="p-6 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black text-white flex-shrink-0" style={{ backgroundColor: doc.color }}>
-                  {doc.initials}
-                </div>
-                <div>
-                  <div className="font-black text-lg" style={{ color: "#283040" }}>{doc.name}</div>
-                  <div className="text-sm" style={{ color: "#5a7a8a" }}>{doc.specialty}</div>
-                </div>
-              </div>
+        {loading && (
+          <GlassCard className="p-6">
+            <p className="text-sm" style={{ color: "#5a7a8a" }}>
+              Loading doctor information...
+            </p>
+          </GlassCard>
+        )}
 
-              <div className="flex items-center gap-1.5 mb-5">
-                <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: doc.status === "Available" ? "#22c55e" : "#F59E0B" }} />
-                <span className="text-sm font-semibold" style={{ color: doc.status === "Available" ? "#16a34a" : "#D97706" }}>{doc.status}</span>
-              </div>
+        {error && (
+          <GlassCard className="p-6">
+            <p className="text-sm font-semibold" style={{ color: "#B74A42" }}>
+              {error}
+            </p>
+          </GlassCard>
+        )}
 
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                {[
-                  { label: "Waiting", value: doc.currentWaiting, unit: "patients" },
-                  { label: "Served Today", value: doc.today, unit: "patients" },
-                  { label: "Avg Consult", value: doc.avgTime, unit: "min" },
-                  { label: "Queue Time", value: doc.queueTime, unit: "min" },
-                ].map(m => (
-                  <div key={m.label} className="p-3 rounded-xl" style={{ backgroundColor: "rgba(168,205,229,0.15)" }}>
-                    <div className="text-xs mb-1" style={{ color: "#5a7a8a" }}>{m.label}</div>
-                    <div className="text-xl font-black" style={{ color: "#283040" }}>{m.value}<span className="text-xs font-normal ml-1" style={{ color: "#7FB0CB" }}>{m.unit}</span></div>
-                  </div>
-                ))}
+        {!loading && !error && (
+          <>
+            <div className="mb-6">
+              <div className="text-sm font-semibold" style={{ color: "#5a7a8a" }}>
+                Total Doctors: {doctors.length}
               </div>
+            </div>
 
-              <div className="mb-4">
-                <div className="flex justify-between text-xs mb-1.5" style={{ color: "#7FB0CB" }}>
-                  <span>Queue Load</span><span>{doc.load}%</span>
-                </div>
-                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(168,205,229,0.3)" }}>
-                  <div className="h-full rounded-full transition-all" style={{ width: `${doc.load}%`, backgroundColor: doc.color }} />
-                </div>
-              </div>
+            <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-6 mb-8">
+              {doctors.map(doc => {
+                const queuePatients = getDrQueue(doc.doctor_name);
 
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "#5a7a8a" }}>Next patients</div>
-                {doc.queuePatients.slice(0, 3).map(p => (
-                  <div key={p.token} className="flex items-center justify-between py-2" style={{ borderBottom: "1px solid rgba(168,205,229,0.2)" }}>
-                    <div className="flex items-center gap-2">
-                      {p.isEmergency && <AlertTriangle size={11} style={{ color: "#B74A42" }} />}
-                      <span className="font-mono text-xs font-bold" style={{ color: doc.color }}>{p.token}</span>
-                      <span className="text-xs" style={{ color: "#283040" }}>{p.name}</span>
+                return (
+                  <GlassCard
+                    key={doc.doctor_id}
+                    className="p-6 hover:shadow-xl transition-all"
+                  >
+                    <div className="flex items-center gap-4 mb-4">
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black text-white flex-shrink-0"
+                        style={{ backgroundColor: "#3F8EAC" }}
+                      >
+                        {getInitials(doc.doctor_name)}
+                      </div>
+
+                      <div>
+                        <div
+                          className="font-black text-lg"
+                          style={{ color: "#283040" }}
+                        >
+                          {doc.doctor_name}
+                        </div>
+
+                        <div
+                          className="text-xs font-semibold"
+                          style={{ color: "#7FB0CB" }}
+                        >
+                          {doc.doctor_id}
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-xs font-medium" style={{ color: "#7FB0CB" }}>{p.eta}</span>
-                  </div>
-                ))}
-                {doc.queuePatients.length === 0 && (
-                  <div className="text-xs" style={{ color: "#A8CDE5" }}>No patients waiting</div>
-                )}
-              </div>
-            </GlassCard>
-          ))}
-        </div>
 
-        {/* Comparison Chart */}
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Doctor Performance Comparison</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData} barGap={5}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#7FB0CB" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-              <Tooltip contentStyle={ttStyle} />
-              <Bar dataKey="Served Today" fill="#3F8EAC" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Waiting Now" fill="#A8CDE5" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Avg Time (min)" fill="#7FB0CB" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </GlassCard>
+                    <div className="flex items-center gap-1.5 mb-5">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{
+                          backgroundColor: getStatusColor(doc.status),
+                        }}
+                      />
+
+                      <span
+                        className="text-sm font-semibold"
+                        style={{
+                          color: getStatusColor(doc.status),
+                        }}
+                      >
+                        {doc.status}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div
+                        className="p-3 rounded-xl"
+                        style={{ backgroundColor: "rgba(168,205,229,0.15)" }}
+                      >
+                        <div
+                          className="text-xs mb-1"
+                          style={{ color: "#5a7a8a" }}
+                        >
+                          Department
+                        </div>
+
+                        <div
+                          className="text-sm font-bold"
+                          style={{ color: "#283040" }}
+                        >
+                          {doc.department}
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-3 rounded-xl"
+                        style={{ backgroundColor: "rgba(168,205,229,0.15)" }}
+                      >
+                        <div
+                          className="text-xs mb-1"
+                          style={{ color: "#5a7a8a" }}
+                        >
+                          Specialization
+                        </div>
+
+                        <div
+                          className="text-sm font-bold"
+                          style={{ color: "#283040" }}
+                        >
+                          {doc.specialization}
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-3 rounded-xl"
+                        style={{ backgroundColor: "rgba(168,205,229,0.15)" }}
+                      >
+                        <div
+                          className="text-xs mb-1"
+                          style={{ color: "#5a7a8a" }}
+                        >
+                          Waiting Patients
+                        </div>
+
+                        <div
+                          className="text-xl font-black"
+                          style={{ color: "#283040" }}
+                        >
+                          {queuePatients.length}
+                        </div>
+                      </div>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+
+            <GlassCard className="p-6">
+              <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                Doctor Status Overview
+              </h3>
+
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={statusCounts}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(168,205,229,0.35)"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: "#7FB0CB" }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                  />
+                  <Tooltip contentStyle={ttStyle} />
+                  <Bar
+                    dataKey="count"
+                    fill="#3F8EAC"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </GlassCard>
+          </>
+        )}
       </div>
     </div>
   );

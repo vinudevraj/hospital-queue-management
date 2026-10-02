@@ -3,6 +3,7 @@ from flask_cors import CORS
 import pandas as pd
 import joblib
 import os
+import mysql.connector
 
 
 app = Flask(__name__)
@@ -16,6 +17,15 @@ MODEL_PATH = os.path.join(
 )
 
 model = joblib.load(MODEL_PATH)
+
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host="127.0.0.1",
+        user="hospital_app",
+        password="HospitalApp@2026",
+        database="hospital_queue"
+    )
 
 
 @app.route("/", methods=["GET"])
@@ -69,6 +79,45 @@ def predict():
     return jsonify({
         "predicted_wait_time_minutes": round(prediction, 2)
     })
+
+
+@app.route("/doctors", methods=["GET"])
+def get_doctors():
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                doctor_id,
+                doctor_name,
+                department,
+                specialization,
+                status
+            FROM doctors
+            ORDER BY CAST(SUBSTRING(doctor_id, 3) AS UNSIGNED)
+        """)
+
+        doctors = cursor.fetchall()
+
+        return jsonify(doctors)
+
+    except mysql.connector.Error as error:
+        return jsonify({
+            "error": "Database connection failed",
+            "message": str(error)
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
 
 
 if __name__ == "__main__":
