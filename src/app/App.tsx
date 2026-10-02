@@ -33,29 +33,29 @@ interface Patient {
 
 // ─── Demo Data ────────────────────────────────────────────────────────────────
 const INITIAL_PATIENTS: Patient[] = [
-  { token: "T001", name: "Priya Sharma", doctor: "Dr. Mehta", status: "consulting", eta: "Now", isEmergency: false, waitMinutes: 0, condition: "Fever & Cold", phone: "+91 98765 43210", age: 34, registeredAt: "09:15 AM" },
-  { token: "T002", name: "Rajesh Kumar", doctor: "Dr. Sharma", status: "waiting", eta: "18 min", isEmergency: true, waitMinutes: 18, condition: "Chest Pain", phone: "+91 87654 32109", age: 58, registeredAt: "09:22 AM" },
-  { token: "T003", name: "Anita Patel", doctor: "Dr. Patel", status: "waiting", eta: "15 min", isEmergency: false, waitMinutes: 15, condition: "Knee Pain", phone: "+91 76543 21098", age: 45, registeredAt: "09:30 AM" },
-  { token: "T004", name: "Vikram Singh", doctor: "Dr. Mehta", status: "waiting", eta: "25 min", isEmergency: false, waitMinutes: 25, condition: "Back Pain", phone: "+91 65432 10987", age: 29, registeredAt: "09:35 AM" },
-  { token: "T005", name: "Sunita Rao", doctor: "Dr. Sharma", status: "waiting", eta: "35 min", isEmergency: false, waitMinutes: 35, condition: "High BP", phone: "+91 54321 09876", age: 52, registeredAt: "09:40 AM" },
-  { token: "T006", name: "Arjun Nair", doctor: "Dr. Patel", status: "waiting", eta: "30 min", isEmergency: false, waitMinutes: 30, condition: "Ankle Sprain", phone: "+91 43210 98765", age: 38, registeredAt: "09:45 AM" },
-  { token: "T007", name: "Meena Krishnan", doctor: "Dr. Mehta", status: "waiting", eta: "40 min", isEmergency: false, waitMinutes: 40, condition: "Diabetes Review", phone: "+91 32109 87654", age: 61, registeredAt: "09:50 AM" },
-  { token: "T008", name: "Suresh Gupta", doctor: "Dr. Sharma", status: "waiting", eta: "52 min", isEmergency: false, waitMinutes: 52, condition: "Palpitations", phone: "+91 21098 76543", age: 44, registeredAt: "09:55 AM" },
-  { token: "T009", name: "Kavitha Menon", doctor: "Dr. Patel", status: "waiting", eta: "45 min", isEmergency: false, waitMinutes: 45, condition: "Shoulder Pain", phone: "+91 10987 65432", age: 33, registeredAt: "10:00 AM" },
-  { token: "T010", name: "Deepak Joshi", doctor: "Dr. Mehta", status: "waiting", eta: "55 min", isEmergency: false, waitMinutes: 55, condition: "Headache", phone: "+91 09876 54321", age: 27, registeredAt: "10:05 AM" },
-  { token: "T011", name: "Rekha Nair", doctor: "Dr. Sharma", status: "waiting", eta: "65 min", isEmergency: false, waitMinutes: 65, condition: "Thyroid Review", phone: "+91 11111 22222", age: 49, registeredAt: "10:10 AM" },
-  { token: "T012", name: "Mohan Pillai", doctor: "Dr. Patel", status: "waiting", eta: "60 min", isEmergency: false, waitMinutes: 60, condition: "Hip Pain", phone: "+91 22222 33333", age: 67, registeredAt: "10:12 AM" },
+  { token: "T001", name: "Priya Sharma", doctor: "Dr. Amit Mehta", status: "consulting", eta: "Now", isEmergency: false, waitMinutes: 0, condition: "Fever & Cold", phone: "+91 98765 43210", age: 34, registeredAt: "09:15 AM" },
+  { token: "T002", name: "Rajesh Kumar", doctor: "Dr. Neha Sharma", status: "waiting", eta: "18 min", isEmergency: true, waitMinutes: 18, condition: "Chest Pain", phone: "+91 87654 32109", age: 58, registeredAt: "09:22 AM" },
+  { token: "T003", name: "Anita Patel", doctor: "Dr. Raj Patel", status: "waiting", eta: "15 min", isEmergency: false, waitMinutes: 15, condition: "Knee Pain", phone: "+91 76543 21098", age: 45, registeredAt: "09:30 AM" },
+  { token: "T004", name: "Vikram Singh", doctor: "Dr. Amit Mehta", status: "waiting", eta: "25 min", isEmergency: false, waitMinutes: 25, condition: "Back Pain", phone: "+91 65432 10987", age: 29, registeredAt: "09:35 AM" },
+  { token: "T005", name: "Sunita Rao", doctor: "Dr. Neha Sharma", status: "waiting", eta: "35 min", isEmergency: false, waitMinutes: 35, condition: "High BP", phone: "+91 54321 09876", age: 52, registeredAt: "09:40 AM" },
+  { token: "T006", name: "Arjun Nair", doctor: "Dr. Raj Patel", status: "waiting", eta: "30 min", isEmergency: false, waitMinutes: 30, condition: "Ankle Sprain", phone: "+91 43210 98765", age: 38, registeredAt: "09:45 AM" },
+  { token: "T007", name: "Meena Krishnan", doctor: "Dr. Amit Mehta", status: "waiting", eta: "40 min", isEmergency: false, waitMinutes: 40, condition: "Diabetes Review", phone: "+91 32109 87654", age: 61, registeredAt: "09:50 AM" },
+  { token: "T008", name: "Suresh Gupta", doctor: "Dr. Neha Sharma", status: "waiting", eta: "52 min", isEmergency: false, waitMinutes: 52, condition: "Palpitations", phone: "+91 21098 76543", age: 44, registeredAt: "09:55 AM" },
+  { token: "T009", name: "Kavitha Menon", doctor: "Dr. Raj Patel", status: "waiting", eta: "45 min", isEmergency: false, waitMinutes: 45, condition: "Shoulder Pain", phone: "+91 10987 65432", age: 33, registeredAt: "10:00 AM" },
+  { token: "T010", name: "Deepak Joshi", doctor: "Dr. Amit Mehta", status: "waiting", eta: "55 min", isEmergency: false, waitMinutes: 55, condition: "Headache", phone: "+91 09876 54321", age: 27, registeredAt: "10:05 AM" },
+  { token: "T011", name: "Rekha Nair", doctor: "Dr. Neha Sharma", status: "waiting", eta: "65 min", isEmergency: false, waitMinutes: 65, condition: "Thyroid Review", phone: "+91 11111 22222", age: 49, registeredAt: "10:10 AM" },
+  { token: "T012", name: "Mohan Pillai", doctor: "Dr. Raj Patel", status: "waiting", eta: "60 min", isEmergency: false, waitMinutes: 60, condition: "Hip Pain", phone: "+91 22222 33333", age: 67, registeredAt: "10:12 AM" },
 ];
 
 const COMPLETED_TODAY = [
-  { token: "C001", name: "Rohit Verma", doctor: "Dr. Mehta", duration: "11 min", at: "08:45 AM" },
-  { token: "C002", name: "Lakshmi Iyer", doctor: "Dr. Sharma", duration: "19 min", at: "08:52 AM" },
-  { token: "C003", name: "Prakash Reddy", doctor: "Dr. Patel", duration: "14 min", at: "09:05 AM" },
-  { token: "C004", name: "Divya Nambiar", doctor: "Dr. Mehta", duration: "10 min", at: "09:14 AM" },
-  { token: "C005", name: "Kiran Bhat", doctor: "Dr. Sharma", duration: "22 min", at: "09:21 AM" },
-  { token: "C006", name: "Smita Kulkarni", doctor: "Dr. Patel", duration: "13 min", at: "09:33 AM" },
-  { token: "C007", name: "Mohan Das", doctor: "Dr. Mehta", duration: "9 min", at: "09:42 AM" },
-  { token: "C008", name: "Padmini Sinha", doctor: "Dr. Sharma", duration: "17 min", at: "09:58 AM" },
+  { token: "C001", name: "Rohit Verma", doctor: "Dr. Amit Mehta", duration: "11 min", at: "08:45 AM" },
+  { token: "C002", name: "Lakshmi Iyer", doctor: "Dr. Neha Sharma", duration: "19 min", at: "08:52 AM" },
+  { token: "C003", name: "Prakash Reddy", doctor: "Dr. Raj Patel", duration: "14 min", at: "09:05 AM" },
+  { token: "C004", name: "Divya Nambiar", doctor: "Dr. Amit Mehta", duration: "10 min", at: "09:14 AM" },
+  { token: "C005", name: "Kiran Bhat", doctor: "Dr. Neha Sharma", duration: "22 min", at: "09:21 AM" },
+  { token: "C006", name: "Smita Kulkarni", doctor: "Dr. Raj Patel", duration: "13 min", at: "09:33 AM" },
+  { token: "C007", name: "Mohan Das", doctor: "Dr. Amit Mehta", duration: "9 min", at: "09:42 AM" },
+  { token: "C008", name: "Padmini Sinha", doctor: "Dr. Neha Sharma", duration: "17 min", at: "09:58 AM" },
 ];
 
 
@@ -446,7 +446,38 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
   const [filter, setFilter] = useState<"all" | PatientStatus>("all");
   const [showModal, setShowModal] = useState(false);
   const [notif, setNotif] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", doctor: "Dr. Mehta", condition: "", phone: "", age: "", isEmergency: false });
+  const [doctors, setDoctors] = useState<DbDoctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [form, setForm] = useState({
+    name: "",
+    department: "Internal Medicine",
+    doctor: "",
+    condition: "",
+    phone: "",
+    age: "",
+    triageCategory: "Non-urgent",
+    isEmergency: false,
+  });
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:5000/doctors")
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to load doctors");
+        return res.json();
+      })
+      .then(data => {
+        setDoctors(data);
+        if (data.length > 0) {
+          setForm(f => ({ ...f, doctor: data[0].doctor_name }));
+        }
+      })
+      .catch(error => {
+        console.error("Failed to load doctors:", error);
+      })
+      .finally(() => {
+        setDoctorsLoading(false);
+      });
+  }, []);
 
   const waiting = patients.filter(p => p.status === "waiting").length;
   const consulting = patients.filter(p => p.status === "consulting").length;
@@ -496,20 +527,164 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     toast("Priority updated.");
   };
 
-  const register = () => {
+  const register = async () => {
     if (!form.name.trim()) return;
-    const token = `T${String(patients.length + 1).padStart(3, "0")}`;
-    const newP: Patient = {
-      token, name: form.name, doctor: form.doctor, status: "waiting",
-      eta: `${avgWait + 12} min`, isEmergency: form.isEmergency,
-      waitMinutes: avgWait + 12, condition: form.condition || "General",
-      phone: form.phone, age: parseInt(form.age) || 0,
-      registeredAt: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-    };
-    setPatients(prev => form.isEmergency ? [prev[0], newP, ...prev.slice(1)] : [...prev, newP]);
-    setForm({ name: "", doctor: "Dr. Mehta", condition: "", phone: "", age: "", isEmergency: false });
-    setShowModal(false);
-    toast(`Token ${token} issued to ${form.name}.`);
+
+    const age = parseInt(form.age) || 30;
+
+    let ageGroup = "Adult (36-60)";
+
+    if (age <= 17) {
+      ageGroup = "Child (0-17)";
+    } else if (age <= 35) {
+      ageGroup = "Young Adult (18-35)";
+    } else if (age <= 60) {
+      ageGroup = "Adult (36-60)";
+    } else {
+      ageGroup = "Senior (61+)";
+    }
+
+    const now = new Date();
+
+    const dayOfWeek = now.toLocaleDateString("en-US", {
+      weekday: "long"
+    });
+
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6 ? 1 : 0;
+
+    const waitingPatients = patients.filter(
+      patient => patient.status === "waiting"
+    ).length;
+
+    const facilityOccupancyRate = Math.min(
+      1,
+      0.30 + waitingPatients * 0.02
+    );
+
+    try {
+      const predictionResponse = await fetch(
+        "http://127.0.0.1:5000/predict",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            AgeGroup: ageGroup,
+            Department: form.department,
+            AppointmentType: "New Patient",
+            ArrivalMethod: "Walk-in",
+            TriageCategory: form.triageCategory,
+            FacilityOccupancyRate: facilityOccupancyRate,
+            ProvidersOnShift: 1,
+            NursesOnShift: 2,
+            StaffToPatientRatio: 0.5,
+            ArrivalHour: now.getHours(),
+            DayOfWeek: dayOfWeek,
+            IsWeekend: isWeekend,
+            Month: now.getMonth() + 1,
+          }),
+        }
+      );
+
+      if (!predictionResponse.ok) {
+        throw new Error("ML prediction failed");
+      }
+
+      const predictionData = await predictionResponse.json();
+
+      const predictedWaitTime = Math.max(
+        0,
+        Math.round(predictionData.predicted_wait_time_minutes)
+      );
+
+      const selectedDoctor = doctors.find(
+        doctor => doctor.doctor_name === form.doctor
+      );
+
+      if (!selectedDoctor) {
+        throw new Error("Doctor not found");
+      }
+
+      const patientResponse = await fetch(
+        "http://127.0.0.1:5000/patients",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patient_name: form.name,
+            age: age,
+            phone: form.phone,
+            condition_name: form.condition || "General",
+            doctor_id: selectedDoctor.doctor_id,
+            department: form.department,
+            triage_category: form.triageCategory,
+            predicted_wait_time: predictedWaitTime,
+            is_emergency: form.isEmergency,
+          }),
+        }
+      );
+
+      if (!patientResponse.ok) {
+        const errorData = await patientResponse.json();
+        throw new Error(
+          errorData.error || "Patient registration failed"
+        );
+      }
+
+      const patientData = await patientResponse.json();
+
+      const newP: Patient = {
+        token: patientData.token,
+        name: form.name,
+        doctor: form.doctor,
+        status: "waiting",
+        eta: `${predictedWaitTime} min`,
+        isEmergency: form.isEmergency,
+        waitMinutes: predictedWaitTime,
+        condition: form.condition || "General",
+        phone: form.phone,
+        age,
+        registeredAt: now.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit"
+        }),
+      };
+
+      setPatients(prev =>
+        form.isEmergency
+          ? [newP, ...prev]
+          : [...prev, newP]
+      );
+
+      setForm(f => ({
+        ...f,
+        name: "",
+        condition: "",
+        phone: "",
+        age: "",
+        triageCategory: "Non-urgent",
+        isEmergency: false,
+      }));
+
+      setShowModal(false);
+
+      toast(
+        `Token ${patientData.token} issued. Predicted wait: ${predictedWaitTime} min.`
+      );
+
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to register patient.";
+
+      toast(message);
+    }
   };
 
   const filtered = patients.filter(p => {
@@ -677,11 +852,70 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                 </div>
               </div>
               <div>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#5a7a8a" }}>Department</label>
+                <select
+                  value={form.department}
+                  onChange={e => {
+                    const selectedDepartment = e.target.value;
+                    const selectedDoctor = doctors.find(
+                      doctor => doctor.department === selectedDepartment
+                    );
+
+                    setForm(f => ({
+                      ...f,
+                      department: selectedDepartment,
+                      doctor: selectedDoctor?.doctor_name || "",
+                    }));
+                  }}
+                  className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none"
+                  style={{
+                    border: "1.5px solid rgba(168,205,229,0.5)",
+                    backgroundColor: "rgba(255,255,255,0.7)",
+                    color: "#283040"
+                  }}
+                >
+                  {doctors.map(doctor => (
+                    <option key={doctor.department} value={doctor.department}>
+                      {doctor.department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#5a7a8a" }}>Triage Category</label>
+                <select
+                  value={form.triageCategory}
+                  onChange={e => setForm(f => ({ ...f, triageCategory: e.target.value }))}
+                  className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none"
+                  style={{
+                    border: "1.5px solid rgba(168,205,229,0.5)",
+                    backgroundColor: "rgba(255,255,255,0.7)",
+                    color: "#283040"
+                  }}
+                >
+                  <option value="Emergency">Emergency</option>
+                  <option value="Immediate">Immediate</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="Semi-urgent">Semi-urgent</option>
+                  <option value="Non-urgent">Non-urgent</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#5a7a8a" }}>Assign Doctor</label>
-                <select value={form.doctor} onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))} className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none" style={{ border: "1.5px solid rgba(168,205,229,0.5)", backgroundColor: "rgba(255,255,255,0.7)", color: "#283040" }}>
-                  <option>Dr. Mehta</option>
-                  <option>Dr. Sharma</option>
-                  <option>Dr. Patel</option>
+                <select value={form.doctor} onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))} disabled={doctorsLoading || doctors.length === 0} className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none" style={{ border: "1.5px solid rgba(168,205,229,0.5)", backgroundColor: "rgba(255,255,255,0.7)", color: "#283040" }}>
+                  {doctorsLoading ? (
+                    <option>Loading doctors...</option>
+                  ) : doctors.length === 0 ? (
+                    <option>No doctors available</option>
+                  ) : (
+                    doctors.map(doctor => (
+                      <option key={doctor.doctor_id} value={doctor.doctor_name}>
+                        {doctor.doctor_id} — {doctor.doctor_name} ({doctor.department})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
               <div>
@@ -1736,7 +1970,44 @@ function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void })
 
 export default function App() {
   const [page, setPage] = useState<Page>("landing");
-  const [patients, setPatients] = useState<Patient[]>(INITIAL_PATIENTS);
+  const [patients, setPatients] = useState<Patient[]>([]);
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:5000/patients")
+      .then(res => {
+        if (!res.ok) {
+          throw new Error("Failed to load patients");
+        }
+        return res.json();
+      })
+      .then(data => {
+        const loadedPatients: Patient[] = data.map((p: any) => ({
+          token: p.token,
+          name: p.patient_name,
+          doctor: p.doctor_name || p.doctor_id || "Unassigned",
+          status: p.status as PatientStatus,
+          eta: p.status === "consulting"
+            ? "Now"
+            : `${p.predicted_wait_time ?? 0} min`,
+          isEmergency: Boolean(p.is_emergency),
+          waitMinutes: p.predicted_wait_time ?? 0,
+          condition: p.condition_name || "General",
+          phone: p.phone || "",
+          age: p.age || 0,
+          registeredAt: p.registered_at
+            ? new Date(p.registered_at).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit"
+              })
+            : "",
+        }));
+
+        setPatients(loadedPatients);
+      })
+      .catch(error => {
+        console.error("Failed to load patients:", error);
+      });
+  }, []);
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
