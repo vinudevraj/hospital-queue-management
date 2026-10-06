@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Users, Clock, Activity, Bell, Search, CheckCircle,
   AlertTriangle, ArrowRight, Star, TrendingUp, Zap, Shield,
   Heart, Stethoscope, Brain, Timer, QrCode,
   SkipForward, UserPlus, Volume2, Download,
   Menu, X, BarChart2, Check, Home, LayoutDashboard,
-  Wifi,
+  Wifi, RefreshCw,
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -18,6 +18,7 @@ type Page = "landing" | "reception" | "patient" | "eta" | "doctors" | "analytics
 type PatientStatus = "consulting" | "waiting" | "completed";
 
 interface Patient {
+  patient_id: number;
   token: string;
   name: string;
   doctor: string;
@@ -25,6 +26,7 @@ interface Patient {
   eta: string;
   isEmergency: boolean;
   waitMinutes: number;
+  liveEta?: number;
   condition: string;
   phone: string;
   age: number;
@@ -448,6 +450,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
   const [notif, setNotif] = useState<string | null>(null);
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [servedToday, setServedToday] = useState(0);
   const [form, setForm] = useState({
     name: "",
     department: "Internal Medicine",
@@ -479,6 +482,127 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       });
   }, []);
 
+  const refreshInProgress = useRef(false);
+  const actionInProgress = useRef(false);
+
+  const refreshLiveQueue = async () => {
+    if (refreshInProgress.current || actionInProgress.current) {
+      return;
+    }
+
+    refreshInProgress.current = true;
+
+    try {
+      const [patientsResponse, queueResponse] = await Promise.all([
+        fetch("http://127.0.0.1:5000/patients", {
+          cache: "no-store",
+        }),
+        fetch("http://127.0.0.1:5000/queue", {
+          cache: "no-store",
+        }),
+      ]);
+
+      if (!patientsResponse.ok || !queueResponse.ok) {
+        throw new Error("Failed to load live queue data.");
+      }
+
+      const patientsData = await patientsResponse.json();
+      const queueData = await queueResponse.json();
+
+      const liveQueue = queueData.queue || [];
+
+      const allPatients = Array.isArray(patientsData)
+        ? patientsData
+        : patientsData.patients || [];
+
+      const completedToday = allPatients.filter(
+        (patient: any) => patient.status === "completed"
+      ).length;
+
+      setServedToday(completedToday);
+
+      const livePatients: Patient[] = allPatients.map(
+        (dbPatient: any) => {
+          const livePatient = liveQueue.find(
+            (q: any) => q.token === dbPatient.token
+          );
+
+          return {
+            patient_id: dbPatient.patient_id,
+            token: dbPatient.token,
+            name: dbPatient.patient_name,
+            doctor:
+              dbPatient.doctor_name ||
+              dbPatient.doctor_id ||
+              "Not assigned",
+            status: dbPatient.status as PatientStatus,
+            eta:
+              dbPatient.status === "consulting"
+                ? "Now"
+                : `${dbPatient.predicted_wait_time ?? 0} min`,
+            isEmergency: Boolean(dbPatient.is_emergency),
+            waitMinutes: dbPatient.predicted_wait_time ?? 0,
+            liveEta: livePatient?.live_eta_minutes,
+            condition: dbPatient.condition_name || "General",
+            phone: dbPatient.phone || "",
+            age: dbPatient.age || 0,
+            registeredAt: dbPatient.registered_at
+              ? new Date(dbPatient.registered_at).toLocaleTimeString(
+                  "en-IN",
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }
+                )
+              : "",
+          };
+        }
+      );
+
+      const queueOrder = new Map(
+        liveQueue.map((q: any, index: number) => [
+          q.token,
+          index,
+        ])
+      );
+
+      const orderedPatients = [...livePatients].sort((a, b) => {
+        const aActive = queueOrder.has(a.token);
+        const bActive = queueOrder.has(b.token);
+
+        if (aActive && bActive) {
+          return (
+            (queueOrder.get(a.token) ?? 0) -
+            (queueOrder.get(b.token) ?? 0)
+          );
+        }
+
+        if (aActive) return -1;
+        if (bActive) return 1;
+
+        return 0;
+      });
+
+      setPatients(orderedPatients);
+    } catch (error) {
+      console.error("Live dashboard refresh failed:", error);
+    } finally {
+      refreshInProgress.current = false;
+    }
+  };
+
+  useEffect(() => {
+    refreshLiveQueue();
+
+    const interval = setInterval(() => {
+      if (!actionInProgress.current) {
+        refreshLiveQueue();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const waiting = patients.filter(p => p.status === "waiting").length;
   const consulting = patients.filter(p => p.status === "consulting").length;
   const completedNow = patients.filter(p => p.status === "completed").length;
@@ -486,45 +610,165 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
   const toast = (msg: string) => { setNotif(msg); setTimeout(() => setNotif(null), 3000); };
 
-  const callNext = () => {
-    setPatients(prev => {
-      const emergency = prev.find(p => p.status === "waiting" && p.isEmergency);
-      const next = emergency || prev.find(p => p.status === "waiting");
-      if (!next) { toast("No patients waiting."); return prev; }
-      toast(`${next.name} (${next.token}) has been called.`);
-      return prev.map(p => p.token === next.token ? { ...p, status: "consulting" as PatientStatus, eta: "Now" } : p);
+  const runQueueAction = async (
+    action: () => Promise<void>
+  ) => {
+    if (actionInProgress.current) {
+      return;
+    }
+
+    actionInProgress.current = true;
+
+    try {
+      await action();
+    } finally {
+      actionInProgress.current = false;
+      await refreshLiveQueue();
+    }
+  };
+
+  const callNext = async () => {
+    await runQueueAction(async () => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:5000/queue/call-next",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to call next patient."
+          );
+        }
+
+        toast(
+          data.token
+            ? `${data.token} has been called.`
+            : "Next patient has been called."
+        );
+      } catch (error) {
+        console.error("Call Next failed:", error);
+        toast(
+          error instanceof Error
+            ? error.message
+            : "Unable to call next patient."
+        );
+      }
     });
   };
 
-  const complete = (token: string) => {
-    setPatients(prev => prev.map(p => p.token === token ? { ...p, status: "completed" as PatientStatus } : p));
-    toast("Consultation completed.");
-  };
+  const complete = async (patientId: number, token: string) => {
+    await runQueueAction(async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:5000/queue/complete/${patientId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-  const skip = (token: string) => {
-    setPatients(prev => {
-      const idx = prev.findIndex(p => p.token === token);
-      if (idx === -1) return prev;
-      const copy = [...prev];
-      const [patient] = copy.splice(idx, 1);
-      const insertAt = copy.findLastIndex(p => p.status === "waiting");
-      copy.splice(insertAt + 1, 0, patient);
-      toast(`${patient.name} moved to end of queue.`);
-      return copy;
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to complete consultation."
+          );
+        }
+
+        toast(`${token} consultation completed.`);
+      } catch (error) {
+        console.error("Complete failed:", error);
+        toast(
+          error instanceof Error
+            ? error.message
+            : "Unable to complete consultation."
+        );
+      }
     });
   };
 
-  const markEmergency = (token: string) => {
-    setPatients(prev => {
-      const updated = prev.map(p => p.token === token ? { ...p, isEmergency: !p.isEmergency } : p);
-      return [
-        ...updated.filter(p => p.status === "consulting"),
-        ...updated.filter(p => p.status === "waiting" && p.isEmergency),
-        ...updated.filter(p => p.status === "waiting" && !p.isEmergency),
-        ...updated.filter(p => p.status === "completed"),
-      ];
+  const skip = async (patientId: number, token: string) => {
+    await runQueueAction(async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:5000/queue/skip/${patientId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to skip patient."
+          );
+        }
+
+        toast(`${token} moved to the end of the queue.`);
+      } catch (error) {
+        console.error("Skip failed:", error);
+        toast(
+          error instanceof Error
+            ? error.message
+            : "Unable to skip patient."
+        );
+      }
     });
-    toast("Priority updated.");
+  };
+
+  const markEmergency = async (
+    patientId: number,
+    token: string,
+    isEmergency: boolean
+  ) => {
+    await runQueueAction(async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:5000/queue/emergency/${patientId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Unable to update priority."
+          );
+        }
+
+        toast(
+          data.is_emergency
+            ? `${token} moved to emergency priority.`
+            : `${token} returned to normal priority.`
+        );
+      } catch (error) {
+        console.error("Emergency update failed:", error);
+        toast(
+          error instanceof Error
+            ? error.message
+            : "Unable to update priority."
+        );
+      }
+    });
   };
 
   const register = async () => {
@@ -623,6 +867,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             triage_category: form.triageCategory,
             predicted_wait_time: predictedWaitTime,
             is_emergency: form.isEmergency,
+            appointment_date: now.toISOString().slice(0, 19).replace("T", " "),
           }),
         }
       );
@@ -637,6 +882,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       const patientData = await patientResponse.json();
 
       const newP: Patient = {
+        patient_id: patientData.patient_id,
         token: patientData.token,
         name: form.name,
         doctor: form.doctor,
@@ -726,7 +972,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             { label: "Active Queue", value: patients.filter(p => p.status !== "completed").length, icon: Users, color: "#3F8EAC" },
             { label: "Patients Waiting", value: waiting, icon: Clock, color: "#7FB0CB" },
             { label: "Avg Wait Time", value: `${avgWait} min`, icon: Timer, color: "#B74A42" },
-            { label: "Served Today", value: COMPLETED_TODAY.length + completedNow, icon: CheckCircle, color: "#22c55e" },
+            { label: "Served Today", value: servedToday, icon: CheckCircle, color: "#22c55e" },
           ].map(m => (
             <GlassCard key={m.label} className="p-5">
               <div className="flex items-start justify-between">
@@ -763,7 +1009,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(168,205,229,0.3)" }}>
-                  {["Token", "Patient", "Doctor", "Condition", "Status", "ETA", "Actions"].map(h => (
+                  {["Token", "Patient", "Doctor", "Condition", "Status", "AI Predicted Wait", "Live Wait", "Actions"].map(h => (
                     <th key={h} className="px-5 py-4 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#7FB0CB" }}>{h}</th>
                   ))}
                 </tr>
@@ -794,21 +1040,33 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <span className="text-sm font-bold" style={{ color: p.eta === "Now" ? "#3F8EAC" : "#283040" }}>{p.eta}</span>
+                      <span className="text-sm font-bold" style={{ color: "#283040" }}>
+                        {p.waitMinutes} min
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: p.status === "consulting" ? "#3F8EAC" : "#283040" }}
+                      >
+                        {p.status === "consulting"
+                          ? "Now"
+                          : `${p.liveEta ?? p.waitMinutes} min`}
+                      </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         {p.status === "consulting" && (
-                          <button onClick={() => complete(p.token)} title="Complete consultation" className="p-1.5 rounded-lg hover:bg-green-50 transition-colors">
+                          <button onClick={() => complete(p.patient_id, p.token)} title="Complete consultation" className="p-1.5 rounded-lg hover:bg-green-50 transition-colors">
                             <CheckCircle size={17} className="text-green-500" />
                           </button>
                         )}
                         {p.status === "waiting" && (
                           <>
-                            <button onClick={() => skip(p.token)} title="Skip patient" className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors">
+                            <button onClick={() => skip(p.patient_id, p.token)} title="Skip patient" className="p-1.5 rounded-lg hover:bg-amber-50 transition-colors">
                               <SkipForward size={17} className="text-amber-500" />
                             </button>
-                            <button onClick={() => markEmergency(p.token)} title="Toggle emergency" className="p-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                            <button onClick={() => markEmergency(p.patient_id, p.token, p.isEmergency)} title="Toggle emergency" className="p-1.5 rounded-lg hover:bg-red-50 transition-colors">
                               <AlertTriangle size={17} style={{ color: p.isEmergency ? "#B74A42" : "#ccc" }} />
                             </button>
                           </>
@@ -874,11 +1132,13 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                     color: "#283040"
                   }}
                 >
-                  {doctors.map(doctor => (
-                    <option key={doctor.department} value={doctor.department}>
-                      {doctor.department}
-                    </option>
-                  ))}
+                  {[...new Set(doctors.map(doctor => doctor.department))].map(
+                    department => (
+                      <option key={department} value={department}>
+                        {department}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
 
@@ -904,17 +1164,36 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "#5a7a8a" }}>Assign Doctor</label>
-                <select value={form.doctor} onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))} disabled={doctorsLoading || doctors.length === 0} className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none" style={{ border: "1.5px solid rgba(168,205,229,0.5)", backgroundColor: "rgba(255,255,255,0.7)", color: "#283040" }}>
+                <select
+                  value={form.doctor}
+                  onChange={e =>
+                    setForm(f => ({
+                      ...f,
+                      doctor: e.target.value,
+                    }))
+                  }
+                  disabled={doctorsLoading || doctors.length === 0}
+                  className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none"
+                  style={{
+                    border: "1.5px solid rgba(168,205,229,0.5)",
+                    backgroundColor: "rgba(255,255,255,0.7)",
+                    color: "#283040"
+                  }}
+                >
                   {doctorsLoading ? (
                     <option>Loading doctors...</option>
-                  ) : doctors.length === 0 ? (
-                    <option>No doctors available</option>
+                  ) : doctors.filter(
+                      doctor => doctor.department === form.department
+                    ).length === 0 ? (
+                    <option value="">No doctors available</option>
                   ) : (
-                    doctors.map(doctor => (
-                      <option key={doctor.doctor_id} value={doctor.doctor_name}>
-                        {doctor.doctor_id} — {doctor.doctor_name} ({doctor.department})
-                      </option>
-                    ))
+                    doctors
+                      .filter(doctor => doctor.department === form.department)
+                      .map(doctor => (
+                        <option key={doctor.doctor_id} value={doctor.doctor_name}>
+                          {doctor.doctor_id} — {doctor.doctor_name}
+                        </option>
+                      ))
                   )}
                 </select>
               </div>
