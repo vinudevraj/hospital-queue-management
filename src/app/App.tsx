@@ -22,6 +22,7 @@ interface Patient {
   token: string;
   name: string;
   doctor: string;
+  department?: string;
   status: PatientStatus;
   eta: string;
   isEmergency: boolean;
@@ -446,6 +447,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
 function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPatients: React.Dispatch<React.SetStateAction<Patient[]>> }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | PatientStatus>("all");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
   const [notif, setNotif] = useState<string | null>(null);
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
@@ -471,7 +473,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       .then(data => {
         setDoctors(data);
         if (data.length > 0) {
-          setForm(f => ({ ...f, doctor: data[0].doctor_name }));
+          setForm(f => ({ ...f, doctor: data[0].doctor_id }));
         }
       })
       .catch(error => {
@@ -535,6 +537,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
               dbPatient.doctor_name ||
               dbPatient.doctor_id ||
               "Not assigned",
+            department: dbPatient.department || "General",
             status: dbPatient.status as PatientStatus,
             eta:
               dbPatient.status === "consulting"
@@ -637,6 +640,9 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             headers: {
               "Content-Type": "application/json",
             },
+            body: JSON.stringify({
+              department: departmentFilter,
+            }),
           }
         );
 
@@ -843,7 +849,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       );
 
       const selectedDoctor = doctors.find(
-        doctor => doctor.doctor_name === form.doctor
+        doctor => doctor.doctor_id === form.doctor
       );
 
       if (!selectedDoctor) {
@@ -936,7 +942,8 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
     return (p.name.toLowerCase().includes(q) || p.token.toLowerCase().includes(q)) &&
-      (filter === "all" || p.status === filter);
+      (filter === "all" || p.status === filter) &&
+      (departmentFilter === "all" || p.department === departmentFilter);
   });
 
   return (
@@ -997,6 +1004,30 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
               </button>
             ))}
           </div>
+
+          <select
+            value={departmentFilter}
+            onChange={e => setDepartmentFilter(e.target.value)}
+            className="px-4 py-2 rounded-xl text-sm font-semibold outline-none"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.7)",
+              color: "#5a7a8a",
+              border: "1px solid rgba(168,205,229,0.4)"
+            }}
+          >
+            <option value="all">All Departments</option>
+            <option value="Emergency">Emergency</option>
+            <option value="Cardiology">Cardiology</option>
+            <option value="General Surgery">General Surgery</option>
+            <option value="Orthopedics">Orthopedics</option>
+            <option value="Radiology">Radiology</option>
+            <option value="Obstetrics">Obstetrics</option>
+            <option value="Neurology">Neurology</option>
+            <option value="Oncology">Oncology</option>
+            <option value="Pediatrics">Pediatrics</option>
+            <option value="Internal Medicine">Internal Medicine</option>
+          </select>
+
           <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: "rgba(255,255,255,0.7)", border: "1px solid rgba(168,205,229,0.4)" }}>
             <Search size={15} style={{ color: "#7FB0CB" }} />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or token…" className="bg-transparent outline-none text-sm w-44" style={{ color: "#283040" }} />
@@ -1006,7 +1037,17 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         {/* Queue Table */}
         <GlassCard className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col className="w-[9%]" />
+                <col className="w-[18%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[13%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
+                <col className="w-[9%]" />
+              </colgroup>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(168,205,229,0.3)" }}>
                   {["Token", "Patient", "Doctor", "Condition", "Status", "AI Predicted Wait", "Live Wait", "Actions"].map(h => (
@@ -1122,7 +1163,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                     setForm(f => ({
                       ...f,
                       department: selectedDepartment,
-                      doctor: selectedDoctor?.doctor_name || "",
+                      doctor: selectedDoctor?.doctor_id || "",
                     }));
                   }}
                   className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none"
@@ -1190,7 +1231,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                     doctors
                       .filter(doctor => doctor.department === form.department)
                       .map(doctor => (
-                        <option key={doctor.doctor_id} value={doctor.doctor_name}>
+                        <option key={doctor.doctor_id} value={doctor.doctor_id}>
                           {doctor.doctor_id} — {doctor.doctor_name}
                         </option>
                       ))
@@ -2264,6 +2305,7 @@ export default function App() {
           token: p.token,
           name: p.patient_name,
           doctor: p.doctor_name || p.doctor_id || "Unassigned",
+          department: p.department || "General",
           status: p.status as PatientStatus,
           eta: p.status === "consulting"
             ? "Now"

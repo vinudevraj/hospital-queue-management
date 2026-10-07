@@ -169,7 +169,8 @@ def get_patients():
     except mysql.connector.Error as error:
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
@@ -229,30 +230,30 @@ def create_patient():
                 "error": "Doctor not found"
             }), 404
 
-        if doctor["department"] != data["department"]:
+        doctor_department = str(doctor["department"]).strip()
+        selected_department = str(data["department"]).strip()
+
+        if doctor_department.lower() != selected_department.lower():
             return jsonify({
-                "error": "Doctor does not belong to selected department"
+                "error": "Doctor does not belong to selected department",
+                "doctor_id": doctor["doctor_id"],
+                "doctor_department": doctor_department,
+                "selected_department": selected_department
             }), 400
 
+        data["department"] = doctor_department
+
         cursor.execute("""
-            SELECT token
+            SELECT COALESCE(
+                MAX(CAST(SUBSTRING(token, 2) AS UNSIGNED)),
+                0
+            ) AS last_number
             FROM patients
-            WHERE DATE(registered_at) = CURDATE()
-              AND token REGEXP '^T[0-9]+$'
-            ORDER BY patient_id DESC
-            LIMIT 1
+            WHERE token REGEXP '^T[0-9]+$'
         """)
 
-        last_patient = cursor.fetchone()
-
-        if last_patient and last_patient["token"].startswith("T"):
-            try:
-                last_number = int(last_patient["token"][1:])
-            except ValueError:
-                last_number = 0
-        else:
-            last_number = 0
-
+        token_result = cursor.fetchone()
+        last_number = int(token_result["last_number"] or 0)
         token = f"T{last_number + 1:03d}"
 
         cursor.execute("""
@@ -332,12 +333,16 @@ def create_patient():
         }), 201
 
     except mysql.connector.Error as error:
+        print("MYSQL ERROR:", error)
+        print("MYSQL ERROR CODE:", error.errno)
+
         if connection:
             connection.rollback()
 
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
@@ -384,12 +389,48 @@ def get_queue():
 
     rows = cursor.fetchall()
 
-    service_time = 18
-    consulting_remaining = 0
-    waiting_count = 0
-    result = []
+    # Historical average consultation duration by department.
+    # These values come directly from the hospital dataset.
+    cursor.execute("""
+        SELECT
+            Department,
+            AVG(ConsultationDurationTime) AS avg_duration
+        FROM hospital_wait_data
+        WHERE ConsultationDurationTime IS NOT NULL
+          AND ConsultationDurationTime > 0
+        GROUP BY Department
+    """)
+
+    department_service_times = {
+        row["Department"]: max(1, round(float(row["avg_duration"])))
+        for row in cursor.fetchall()
+        if row["Department"]
+    }
+
+    default_service_time = 20
+
+    # Build live queue state independently for each department.
+    # The current consultation is determined first so that its
+    # remaining time is always included for waiting patients,
+    # regardless of queue priority ordering.
+    department_state = {}
 
     for row in rows:
+        department = row["department"] or "General"
+
+        if department not in department_state:
+            department_state[department] = {
+                "consulting_remaining": 0,
+                "waiting": []
+            }
+
+        state = department_state[department]
+
+        service_time = department_service_times.get(
+            department,
+            default_service_time
+        )
+
         if row["status"] == "consulting":
             remaining = service_time
 
@@ -398,33 +439,66 @@ def get_queue():
                     """
                     SELECT GREATEST(
                         0,
-                        %s - TIMESTAMPDIFF(
-                            MINUTE,
+                        %s * 60 - TIMESTAMPDIFF(
+                            SECOND,
                             %s,
                             NOW()
                         )
-                    ) AS remaining
+                    ) AS remaining_seconds
                     """,
                     (service_time, row["consulting_started_at"])
                 )
 
-                remaining = int(cursor.fetchone()["remaining"])
+                remaining_seconds = int(
+                    cursor.fetchone()["remaining_seconds"]
+                )
+
+                remaining = (
+                    remaining_seconds + 59
+                ) // 60
 
             row["queue_position"] = 0
             row["live_eta_minutes"] = remaining
-            consulting_remaining = max(
-                consulting_remaining,
+
+            state["consulting_remaining"] = max(
+                state["consulting_remaining"],
                 remaining
             )
 
         else:
-            waiting_count += 1
-            row["queue_position"] = waiting_count
+            state["waiting"].append(row)
 
-            row["live_eta_minutes"] = (
-                consulting_remaining
-                + waiting_count * service_time
-            )
+    # Calculate waiting positions and live wait after the
+    # current consultation is known for every department.
+    waiting_count = 0
+    result = []
+
+    for row in rows:
+        department = row["department"] or "General"
+        state = department_state[department]
+
+        if row["status"] == "waiting":
+            waiting_count += 1
+
+            waiting_rows = state["waiting"]
+            position = waiting_rows.index(row) + 1
+
+            row["queue_position"] = position
+
+            # Live Wait means time until consultation STARTS.
+            # The first waiting patient waits only for the
+            # current consultation to finish. If no one is
+            # consulting, their wait is zero.
+            prior_wait = state["consulting_remaining"]
+
+            for prior_row in waiting_rows[:position - 1]:
+                prior_service_time = department_service_times.get(
+                    prior_row["department"] or "General",
+                    default_service_time
+                )
+                prior_wait += prior_service_time
+
+            row["live_eta_minutes"] = prior_wait
 
         if row["added_at"]:
             row["added_at"] = row["added_at"].isoformat()
@@ -447,7 +521,8 @@ def get_queue():
     return jsonify({
         "queue": result,
         "waiting_count": waiting_count,
-        "service_time_minutes": service_time
+        "service_time_minutes": department_service_times,
+        "default_service_time_minutes": default_service_time
     })
 
 
@@ -460,7 +535,10 @@ def call_next_patient():
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
 
-        cursor.execute("""
+        request_data = request.get_json(silent=True) or {}
+        department = request_data.get("department", "all")
+
+        query = """
             SELECT
                 q.queue_id,
                 q.patient_id,
@@ -471,12 +549,23 @@ def call_next_patient():
             WHERE DATE(p.registered_at) = CURDATE()
               AND q.status = 'waiting'
               AND p.status = 'waiting'
+        """
+
+        params = []
+
+        if department and department != "all":
+            query += " AND p.department = %s"
+            params.append(department)
+
+        query += """
             ORDER BY
                 q.priority ASC,
                 q.added_at ASC,
                 q.queue_id ASC
             LIMIT 1
-        """)
+        """
+
+        cursor.execute(query, tuple(params))
 
         next_patient = cursor.fetchone()
 
@@ -512,7 +601,8 @@ def call_next_patient():
 
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
@@ -577,7 +667,8 @@ def complete_patient(patient_id):
 
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
@@ -623,14 +714,24 @@ def skip_patient(patient_id):
             }), 400
 
         cursor.execute("""
-            SELECT COALESCE(MAX(q.added_at), NOW()) AS last_added_at
+            SELECT
+                p.department,
+                COALESCE(
+                    MAX(q.added_at),
+                    NOW()
+                ) AS last_added_at
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
             WHERE DATE(p.registered_at) = CURDATE()
               AND q.status = 'waiting'
+              AND p.department = (
+                  SELECT department
+                  FROM patients
+                  WHERE patient_id = %s
+              )
               AND q.queue_id <> %s
-        """, (patient["queue_id"],))
+        """, (patient_id, patient["queue_id"]))
 
         row = cursor.fetchone()
         last_added_at = row["last_added_at"]
@@ -640,29 +741,6 @@ def skip_patient(patient_id):
             SET added_at = DATE_ADD(%s, INTERVAL 1 SECOND)
             WHERE queue_id = %s
         """, (last_added_at, patient["queue_id"]))
-
-        # Recalculate stored queue positions after the skip.
-        cursor.execute("""
-            SELECT q.queue_id
-            FROM queue q
-            JOIN patients p
-                ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
-              AND q.status = 'waiting'
-            ORDER BY
-                q.priority ASC,
-                q.added_at ASC,
-                q.queue_id ASC
-        """)
-
-        waiting_rows = cursor.fetchall()
-
-        for position, queue_row in enumerate(waiting_rows, start=1):
-            cursor.execute("""
-                UPDATE queue
-                SET queue_position = %s
-                WHERE queue_id = %s
-            """, (position, queue_row["queue_id"]))
 
         connection.commit()
 
@@ -678,7 +756,8 @@ def skip_patient(patient_id):
 
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
@@ -778,7 +857,8 @@ def toggle_emergency(patient_id):
 
         return jsonify({
             "error": "Database operation failed",
-            "message": str(error)
+            "message": str(error),
+            "mysql_error_code": error.errno
         }), 500
 
     finally:
