@@ -20,12 +20,16 @@ model = joblib.load(MODEL_PATH)
 
 
 def get_db_connection():
-    return mysql.connector.connect(
+    connection = mysql.connector.connect(
         host="127.0.0.1",
         user="hospital_app",
         password="HospitalApp@2026",
         database="hospital_queue"
     )
+    cursor = connection.cursor()
+    cursor.execute("SET time_zone = '+05:30'")
+    cursor.close()
+    return connection
 
 
 @app.route("/", methods=["GET"])
@@ -160,7 +164,7 @@ def get_analytics():
                 ),
                 "patients": hourly_counts.get(hour, 0)
             }
-            for hour in range(6, 18)
+            for hour in range(24)
         ]
 
         peak_hour = (
@@ -191,38 +195,65 @@ def get_analytics():
         weekly_rows = cursor.fetchall()
 
         weekly_counts = {
-            row["date"].strftime("%a"): {
+            row["date"]: {
                 "patients": int(row["patients"]),
                 "efficiency": int(row["efficiency"] or 0)
             }
             for row in weekly_rows
         }
 
-        weekly_trend = [
-            {
-                "day": day,
-                "patients": weekly_counts.get(
-                    day,
-                    {"patients": 0, "efficiency": 0}
-                )["patients"],
-                "efficiency": weekly_counts.get(
-                    day,
-                    {"patients": 0, "efficiency": 0}
-                )["efficiency"]
-            }
-            for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        ]
+        weekly_trend = []
+
+        for offset in range(6, -1, -1):
+            cursor.execute(
+                "SELECT DATE(CURDATE() - INTERVAL %s DAY) AS date",
+                (offset,)
+            )
+            date_row = cursor.fetchone()
+            current_date = date_row["date"]
+
+            values = weekly_counts.get(
+                current_date,
+                {"patients": 0, "efficiency": 0}
+            )
+
+            weekly_trend.append({
+                "day": current_date.strftime("%a"),
+                "date": current_date.strftime("%Y-%m-%d"),
+                "patients": values["patients"],
+                "efficiency": values["efficiency"]
+            })
 
         cursor.execute("""
             SELECT
                 CASE
-                    WHEN ConsultationDurationTime < 10 THEN '< 10 min'
-                    WHEN ConsultationDurationTime < 15 THEN '10–15 min'
-                    WHEN ConsultationDurationTime < 20 THEN '15–20 min'
+                    WHEN TIMESTAMPDIFF(
+                        SECOND,
+                        q.consulting_started_at,
+                        q.completed_at
+                    ) / 60 < 10 THEN '< 10 min'
+                    WHEN TIMESTAMPDIFF(
+                        SECOND,
+                        q.consulting_started_at,
+                        q.completed_at
+                    ) / 60 < 15 THEN '10–15 min'
+                    WHEN TIMESTAMPDIFF(
+                        SECOND,
+                        q.consulting_started_at,
+                        q.completed_at
+                    ) / 60 < 20 THEN '15–20 min'
                     ELSE '> 20 min'
                 END AS duration_range,
                 COUNT(*) AS count
-            FROM hospital_wait_data
+            FROM queue q
+            JOIN patients p
+                ON q.patient_id = p.patient_id
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND q.status = 'completed'
+              AND q.consulting_started_at IS NOT NULL
+              AND q.completed_at IS NOT NULL
+              AND q.completed_at >= q.consulting_started_at
             GROUP BY duration_range
             ORDER BY
                 CASE duration_range
@@ -231,7 +262,7 @@ def get_analytics():
                     WHEN '15–20 min' THEN 3
                     ELSE 4
                 END
-        """)
+        """, (LIVE_PATIENT_ID_MIN,))
         duration_rows = cursor.fetchall()
 
         duration_total = sum(
@@ -479,6 +510,7 @@ def get_patient_by_token(token):
 
         default_service_time = 20
         live_eta_minutes = None
+        live_eta_seconds = None
         queue_position = None
 
         # Only active queue entries have a live ETA.
@@ -509,6 +541,7 @@ def get_patient_by_token(token):
             department_rows = cursor.fetchall()
 
             consulting_remaining = 0
+            consulting_remaining_seconds = 0
             waiting_rows = []
 
             service_time = department_service_times.get(
@@ -547,6 +580,10 @@ def get_patient_by_token(token):
                         consulting_remaining,
                         remaining
                     )
+                    consulting_remaining_seconds = max(
+                        consulting_remaining_seconds,
+                        remaining_seconds
+                    )
 
                 elif row["status"] == "waiting":
                     waiting_rows.append(row)
@@ -554,6 +591,7 @@ def get_patient_by_token(token):
             if patient["queue_status"] == "consulting":
                 queue_position = 0
                 live_eta_minutes = consulting_remaining
+                live_eta_seconds = consulting_remaining_seconds
 
             else:
                 matching_index = next(
@@ -568,6 +606,7 @@ def get_patient_by_token(token):
                 if matching_index is not None:
                     queue_position = matching_index + 1
                     live_eta_minutes = consulting_remaining
+                    live_eta_seconds = consulting_remaining_seconds
 
                     for prior_row in waiting_rows[:matching_index]:
                         prior_service_time = department_service_times.get(
@@ -575,6 +614,7 @@ def get_patient_by_token(token):
                             default_service_time
                         )
                         live_eta_minutes += prior_service_time
+                        live_eta_seconds += prior_service_time * 60
 
         for field in [
             "registered_at",
@@ -587,6 +627,7 @@ def get_patient_by_token(token):
 
         patient["queue_position"] = queue_position
         patient["live_eta_minutes"] = live_eta_minutes
+        patient["live_eta_seconds"] = live_eta_seconds
 
         return jsonify(patient), 200
 
@@ -906,6 +947,7 @@ def get_queue():
         if department not in department_state:
             department_state[department] = {
                 "consulting_remaining": 0,
+                "consulting_remaining_seconds": 0,
                 "waiting": []
             }
 
@@ -944,10 +986,15 @@ def get_queue():
 
             row["queue_position"] = 0
             row["live_eta_minutes"] = remaining
+            row["live_eta_seconds"] = remaining_seconds
 
             state["consulting_remaining"] = max(
                 state["consulting_remaining"],
                 remaining
+            )
+            state["consulting_remaining_seconds"] = max(
+                state["consulting_remaining_seconds"],
+                remaining_seconds
             )
 
         else:
@@ -975,6 +1022,7 @@ def get_queue():
             # current consultation to finish. If no one is
             # consulting, their wait is zero.
             prior_wait = state["consulting_remaining"]
+            prior_wait_seconds = state["consulting_remaining_seconds"]
 
             for prior_row in waiting_rows[:position - 1]:
                 prior_service_time = department_service_times.get(
@@ -982,8 +1030,10 @@ def get_queue():
                     default_service_time
                 )
                 prior_wait += prior_service_time
+                prior_wait_seconds += prior_service_time * 60
 
             row["live_eta_minutes"] = prior_wait
+            row["live_eta_seconds"] = prior_wait_seconds
 
         if row["added_at"]:
             row["added_at"] = row["added_at"].isoformat()
@@ -1134,7 +1184,8 @@ def complete_patient(patient_id):
 
         cursor.execute("""
             UPDATE queue
-            SET status = 'completed'
+            SET status = 'completed',
+                completed_at = NOW()
             WHERE patient_id = %s
         """, (patient_id,))
 

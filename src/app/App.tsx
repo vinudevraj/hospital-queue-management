@@ -28,6 +28,7 @@ interface Patient {
   isEmergency: boolean;
   waitMinutes: number;
   liveEta?: number;
+  liveEtaSeconds?: number;
   condition: string;
   phone: string;
   age: number;
@@ -64,32 +65,6 @@ const COMPLETED_TODAY = [
 
 
 // ─── Chart Data ───────────────────────────────────────────────────────────────
-const hourlyVolume = [
-  { time: "8AM", patients: 4, wait: 8 }, { time: "9AM", patients: 8, wait: 14 },
-  { time: "10AM", patients: 12, wait: 23 }, { time: "11AM", patients: 15, wait: 31 },
-  { time: "12PM", patients: 9, wait: 19 }, { time: "1PM", patients: 6, wait: 12 },
-  { time: "2PM", patients: 11, wait: 22 }, { time: "3PM", patients: 14, wait: 28 },
-  { time: "4PM", patients: 10, wait: 20 }, { time: "5PM", patients: 7, wait: 15 },
-];
-
-const weeklyTrend = [
-  { day: "Mon", patients: 42, efficiency: 87 }, { day: "Tue", patients: 38, efficiency: 91 },
-  { day: "Wed", patients: 55, efficiency: 82 }, { day: "Thu", patients: 48, efficiency: 89 },
-  { day: "Fri", patients: 61, efficiency: 85 }, { day: "Sat", patients: 72, efficiency: 78 },
-  { day: "Sun", patients: 29, efficiency: 94 },
-];
-
-const queueTrend = [
-  { t: "8:00", q: 2 }, { t: "8:30", q: 5 }, { t: "9:00", q: 8 }, { t: "9:30", q: 11 },
-  { t: "10:00", q: 14 }, { t: "10:30", q: 12 }, { t: "11:00", q: 9 }, { t: "11:30", q: 7 }, { t: "12:00", q: 5 },
-];
-
-const durationDist = [
-  { name: "< 10 min", value: 23, color: "#3F8EAC" },
-  { name: "10–15 min", value: 41, color: "#7FB0CB" },
-  { name: "15–20 min", value: 28, color: "#A8CDE5" },
-  { name: "> 20 min", value: 8, color: "#B74A42" },
-];
 
 const ttStyle = { backgroundColor: "white", border: "1px solid #A8CDE5", borderRadius: "12px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" };
 
@@ -546,6 +521,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             isEmergency: Boolean(dbPatient.is_emergency),
             waitMinutes: dbPatient.predicted_wait_time ?? 0,
             liveEta: livePatient?.live_eta_minutes,
+            liveEtaSeconds: livePatient?.live_eta_seconds,
             condition: dbPatient.condition_name || "General",
             phone: dbPatient.phone || "",
             age: dbPatient.age || 0,
@@ -586,7 +562,39 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         return 0;
       });
 
-      setPatients(orderedPatients);
+      setPatients(currentPatients => {
+        const currentByToken = new Map(
+          currentPatients.map(patient => [patient.token, patient])
+        );
+
+        return orderedPatients.map(patient => {
+          const current = currentByToken.get(patient.token);
+
+          if (
+            current &&
+            current.status === "waiting" &&
+            patient.status === "waiting" &&
+            current.liveEtaSeconds !== undefined &&
+            patient.liveEtaSeconds !== undefined
+          ) {
+            return {
+              ...patient,
+              liveEtaSeconds: Math.min(
+                current.liveEtaSeconds,
+                patient.liveEtaSeconds
+              ),
+              liveEta: Math.ceil(
+                Math.min(
+                  current.liveEtaSeconds,
+                  patient.liveEtaSeconds
+                ) / 60
+              ),
+            };
+          }
+
+          return patient;
+        });
+      });
     } catch (error) {
       console.error("Live dashboard refresh failed:", error);
     } finally {
@@ -604,6 +612,34 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     }, 5000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const countdown = setInterval(() => {
+      setPatients(current =>
+        current.map(patient => {
+          if (
+            patient.status !== "waiting" ||
+            patient.liveEtaSeconds === undefined
+          ) {
+            return patient;
+          }
+
+          const nextSeconds = Math.max(
+            0,
+            patient.liveEtaSeconds - 1
+          );
+
+          return {
+            ...patient,
+            liveEtaSeconds: nextSeconds,
+            liveEta: Math.ceil(nextSeconds / 60),
+          };
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(countdown);
   }, []);
 
   const waiting = patients.filter(p => p.status === "waiting").length;
@@ -626,8 +662,9 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       await action();
     } finally {
       actionInProgress.current = false;
-      await refreshLiveQueue();
     }
+
+    await refreshLiveQueue();
   };
 
   const callNext = async () => {
@@ -1093,7 +1130,9 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                         {p.status === "consulting"
                           ? "Now"
                           : p.status === "waiting"
-                            ? `${p.liveEta ?? p.waitMinutes} min`
+                            ? p.liveEtaSeconds !== undefined
+                              ? `${Math.ceil(p.liveEtaSeconds / 60)} min`
+                              : `${p.liveEta ?? p.waitMinutes} min`
                             : "—"}
                       </span>
                     </td>
@@ -1360,13 +1399,15 @@ function PatientPage() {
     return () => clearInterval(interval);
   }, [patient?.token]);
 
-  const liveWait =
+  const liveWaitSeconds =
     patient?.status === "consulting"
       ? 0
-      : patient?.live_eta_minutes !== null &&
-        patient?.live_eta_minutes !== undefined
-      ? patient.live_eta_minutes
-      : patient?.predicted_wait_time ?? 0;
+      : patient?.live_eta_seconds !== null &&
+        patient?.live_eta_seconds !== undefined
+      ? patient.live_eta_seconds
+      : (patient?.live_eta_minutes ?? patient?.predicted_wait_time ?? 0) * 60;
+
+  const liveWait = Math.floor(liveWaitSeconds / 60);
 
   const statusLabel =
     patient?.status === "consulting"
@@ -1761,62 +1802,249 @@ function PatientPage() {
 }
 
 function ETAPage() {
+  const [queueData, setQueueData] = useState<any>(null);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [doctorsData, setDoctorsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadETAData = async () => {
+      try {
+        const [queueResponse, analyticsResponse, doctorsResponse] =
+          await Promise.all([
+            fetch("http://127.0.0.1:5000/queue"),
+            fetch("http://127.0.0.1:5000/analytics"),
+            fetch("http://127.0.0.1:5000/doctors")
+          ]);
+
+        if (!queueResponse.ok || !analyticsResponse.ok || !doctorsResponse.ok) {
+          throw new Error("Failed to load ETA data");
+        }
+
+        const [queue, analytics, doctors] = await Promise.all([
+          queueResponse.json(),
+          analyticsResponse.json(),
+          doctorsResponse.json()
+        ]);
+
+        setQueueData(queue);
+        setAnalyticsData(analytics);
+        setDoctorsData(doctors);
+      } catch (error) {
+        console.error("Failed to load ETA data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadETAData();
+
+    const interval = setInterval(loadETAData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const queue = queueData?.queue ?? [];
+  const waitingPatients = queue.filter(
+    (patient: any) => patient.status === "waiting"
+  );
+
+  const queueLength = Number(queueData?.waiting_count ?? waitingPatients.length);
+
+  const serviceTimes = Object.values(
+    queueData?.service_time_minutes ?? {}
+  ) as number[];
+
+  const avgConsultation = serviceTimes.length
+    ? Math.round(
+        serviceTimes.reduce((sum, value) => sum + Number(value), 0) /
+          serviceTimes.length
+      )
+    : 0;
+
+  const predictedWait =
+    waitingPatients.length > 0
+      ? Number(waitingPatients[0].live_eta_minutes ?? 0)
+      : 0;
+
+  const availableDoctors = doctorsData.filter(
+    (doctor: any) => doctor.status === "Available"
+  ).length;
+
+  const activeDoctors = doctorsData.filter(
+    (doctor: any) => doctor.status === "Busy"
+  ).length;
+
+  const doctorLoad =
+    availableDoctors + activeDoctors > 0
+      ? queueLength / (availableDoctors + activeDoctors)
+      : queueLength;
+
+  let congestionLevel = "Clear";
+  let congestionColor = "#22c55e";
+
+  if (doctorLoad > 2) {
+    congestionLevel = "High";
+    congestionColor = "#B74A42";
+  } else if (doctorLoad > 1) {
+    congestionLevel = "Moderate";
+    congestionColor = "#F59E0B";
+  }
+
+  const hourlyVolume = analyticsData?.hourly_volume ?? [];
+
+  const peakHour = analyticsData?.peak_hour ?? "—";
+  const emergencyCases = Number(analyticsData?.emergency_cases ?? 0);
+  const completedPatients = Number(
+    analyticsData?.completed_patients_today ?? 0
+  );
+
   const insights = [
-    { text: "Current wait time is 23% lower than Tuesday's average for this hour.", good: true },
-    { text: "Peak hour approaching at 11:30 AM — expect queue surge of ~6 patients.", good: false },
-    { text: "Dr. Mehta is 18% faster than average consultation speed today.", good: true },
-    { text: "No-show rate at 6.2% — below the 8.1% monthly average. Queue is healthy.", good: true },
+    {
+      text:
+        queueLength > 0
+          ? `${queueLength} patient${queueLength === 1 ? "" : "s"} currently waiting across the active queue.`
+          : "No patients are currently waiting in the active queue.",
+      good: queueLength <= 5
+    },
+    {
+      text:
+        completedPatients > 0
+          ? `${completedPatients} patient${completedPatients === 1 ? "" : "s"} completed today.`
+          : "No patients have completed consultation today yet.",
+      good: true
+    },
+    {
+      text:
+        peakHour !== "—"
+          ? `Today's highest patient traffic was recorded around ${peakHour}.`
+          : "Peak traffic information is not available yet.",
+      good: true
+    },
+    {
+      text:
+        emergencyCases > 0
+          ? `${emergencyCases} emergency case${emergencyCases === 1 ? "" : "s"} recorded today.`
+          : "No emergency cases have been recorded today.",
+      good: emergencyCases === 0
+    }
   ];
 
   return (
     <div className="min-h-screen py-8 px-4" style={{ backgroundColor: "#DDEEF8" }}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>Smart ETA Prediction</h1>
-          <p className="text-sm" style={{ color: "#7FB0CB" }}>AI-powered queue analytics · Confidence calibrated on 12,450 consultations</p>
+          <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>
+            Smart ETA Prediction
+          </h1>
+          <p className="text-sm" style={{ color: "#7FB0CB" }}>
+            Live queue status and wait-time analysis
+          </p>
         </div>
 
-        {/* AI Confidence */}
-        <GlassCard className="p-6 mb-6" style={{ background: "linear-gradient(135deg, rgba(63,142,172,0.07), rgba(168,205,229,0.12))" }}>
+        {/* Prediction Model */}
+        <GlassCard
+          className="p-6 mb-6"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(63,142,172,0.07), rgba(168,205,229,0.12))"
+          }}
+        >
           <div className="flex flex-col md:flex-row md:items-center gap-6">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#3F8EAC" }}>
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: "#3F8EAC" }}
+              >
                 <Brain size={28} className="text-white" />
               </div>
               <div>
-                <div className="font-black text-xl" style={{ color: "#283040" }}>AI Confidence Score</div>
-                <div className="text-sm mt-0.5" style={{ color: "#5a7a8a" }}>Inputs: queue size, doctor speed, emergencies, no-show rates, historical data</div>
+                <div
+                  className="font-black text-xl"
+                  style={{ color: "#283040" }}
+                >
+                  Wait-Time Prediction Model
+                </div>
+                <div
+                  className="text-sm mt-0.5"
+                  style={{ color: "#5a7a8a" }}
+                >
+                  Linear regression model using patient and queue characteristics
+                </div>
               </div>
             </div>
-            <div className="md:ml-auto">
-              <div className="text-5xl font-black" style={{ color: "#3F8EAC" }}>94%</div>
-              <div className="text-sm" style={{ color: "#7FB0CB" }}>prediction accuracy</div>
+
+            <div className="md:ml-auto text-left md:text-right">
+              <div
+                className="text-4xl font-black"
+                style={{ color: "#3F8EAC" }}
+              >
+                27.8 min
+              </div>
+              <div className="text-sm" style={{ color: "#7FB0CB" }}>
+                average prediction error
+              </div>
             </div>
-          </div>
-          <div className="mt-5 h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(168,205,229,0.3)" }}>
-            <div className="h-full rounded-full" style={{ width: "94%", backgroundColor: "#3F8EAC", transition: "width 1s ease" }} />
-          </div>
-          <div className="flex justify-between mt-1.5 text-xs" style={{ color: "#7FB0CB" }}>
-            <span>0%</span><span>50%</span><span>100%</span>
           </div>
         </GlassCard>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-7">
           {[
-            { label: "Queue Length Now", value: "12", sub: "patients", icon: Users, color: "#3F8EAC" },
-            { label: "Avg Consultation", value: "14.2", sub: "minutes", icon: Clock, color: "#7FB0CB" },
-            { label: "Predicted Wait", value: "23", sub: "minutes", icon: Timer, color: "#B74A42" },
-            { label: "Congestion Level", value: "Med", sub: "~65% capacity", icon: Activity, color: "#3F8EAC" },
+            {
+              label: "Queue Length Now",
+              value: loading ? "—" : String(queueLength),
+              sub: "waiting patients",
+              icon: Users,
+              color: "#3F8EAC"
+            },
+            {
+              label: "Avg Consultation",
+              value: loading ? "—" : String(avgConsultation),
+              sub: "historical minutes",
+              icon: Clock,
+              color: "#7FB0CB"
+            },
+            {
+              label: "Predicted Wait",
+              value: loading ? "—" : String(predictedWait),
+              sub: "next patient · minutes",
+              icon: Timer,
+              color: "#B74A42"
+            },
+            {
+              label: "Queue Status",
+              value: loading ? "—" : congestionLevel,
+              sub: `${availableDoctors} doctors available`,
+              icon: Activity,
+              color: congestionColor
+            }
           ].map(m => (
             <GlassCard key={m.label} className="p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs font-medium" style={{ color: "#5a7a8a" }}>{m.label}</p>
-                  <p className="text-3xl font-black mt-1" style={{ color: "#283040" }}>{m.value}</p>
-                  <p className="text-xs mt-1" style={{ color: m.color }}>{m.sub}</p>
+                  <p
+                    className="text-xs font-medium"
+                    style={{ color: "#5a7a8a" }}
+                  >
+                    {m.label}
+                  </p>
+                  <p
+                    className="text-3xl font-black mt-1"
+                    style={{ color: "#283040" }}
+                  >
+                    {m.value}
+                  </p>
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: m.color }}
+                  >
+                    {m.sub}
+                  </p>
                 </div>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: m.color + "15" }}>
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: m.color + "15" }}
+                >
                   <m.icon size={20} style={{ color: m.color }} />
                 </div>
               </div>
@@ -1825,34 +2053,81 @@ function ETAPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 mb-6">
-          {/* Queue Trend Chart */}
+          {/* Patient Arrival Trend */}
           <GlassCard className="p-6 lg:col-span-2">
-            <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Queue Length Trend</h3>
+            <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+              Patient Arrival Trend
+            </h3>
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={queueTrend}>
+              <AreaChart data={hourlyVolume}>
                 <defs>
                   <linearGradient id="qg" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3F8EAC" stopOpacity={0.22} />
-                    <stop offset="95%" stopColor="#3F8EAC" stopOpacity={0} />
+                    <stop
+                      offset="5%"
+                      stopColor="#3F8EAC"
+                      stopOpacity={0.22}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="#3F8EAC"
+                      stopOpacity={0}
+                    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-                <XAxis dataKey="t" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#7FB0CB" }} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="rgba(168,205,229,0.35)"
+                />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                />
                 <Tooltip contentStyle={ttStyle} />
-                <Area type="monotone" dataKey="q" stroke="#3F8EAC" strokeWidth={2.5} fill="url(#qg)" name="Queue Size" />
+                <Area
+                  type="monotone"
+                  dataKey="patients"
+                  stroke="#3F8EAC"
+                  strokeWidth={2.5}
+                  fill="url(#qg)"
+                  name="Patients"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </GlassCard>
 
-          {/* AI Insights */}
+          {/* Operational Insights */}
           <GlassCard className="p-6">
-            <h3 className="font-bold mb-4" style={{ color: "#283040" }}>AI Insights</h3>
+            <h3 className="font-bold mb-4" style={{ color: "#283040" }}>
+              Operational Insights
+            </h3>
             <div className="space-y-3">
               {insights.map((ins, i) => (
-                <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl" style={{ backgroundColor: ins.good ? "rgba(63,142,172,0.07)" : "rgba(183,74,66,0.06)" }}>
-                  <TrendingUp size={13} style={{ color: ins.good ? "#3F8EAC" : "#B74A42", flexShrink: 0, marginTop: 2 }} />
-                  <span className="text-xs leading-relaxed" style={{ color: "#283040" }}>{ins.text}</span>
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 p-3 rounded-xl"
+                  style={{
+                    backgroundColor: ins.good
+                      ? "rgba(63,142,172,0.07)"
+                      : "rgba(183,74,66,0.06)"
+                  }}
+                >
+                  <TrendingUp
+                    size={13}
+                    style={{
+                      color: ins.good ? "#3F8EAC" : "#B74A42",
+                      flexShrink: 0,
+                      marginTop: 2
+                    }}
+                  />
+                  <span
+                    className="text-xs leading-relaxed"
+                    style={{ color: "#283040" }}
+                  >
+                    {ins.text}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1861,16 +2136,40 @@ function ETAPage() {
 
         {/* Hourly Volume */}
         <GlassCard className="p-6">
-          <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Hourly Patient Volume &amp; Wait Time Analysis</h3>
+          <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+            Hourly Patient Volume
+          </h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={hourlyVolume} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-              <YAxis yAxisId="l" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-              <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-              <Tooltip contentStyle={ttStyle} />
-              <Bar yAxisId="l" dataKey="patients" fill="#3F8EAC" radius={[6, 6, 0, 0]} name="Patients" />
-              <Bar yAxisId="r" dataKey="wait" fill="#A8CDE5" radius={[6, 6, 0, 0]} name="Wait (min)" />
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="rgba(168,205,229,0.35)"
+              />
+              <XAxis
+                dataKey="time"
+                tick={{ fontSize: 11, fill: "#7FB0CB" }}
+              />
+              <YAxis
+                allowDecimals={false}
+                domain={[0, "dataMax + 1"]}
+                tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                label={{
+                  value: "Patients",
+                  angle: -90,
+                  position: "insideLeft",
+                  style: { fill: "#7FB0CB", fontSize: 11 }
+                }}
+              />
+              <Tooltip
+                contentStyle={ttStyle}
+                formatter={(value: number) => [value, "Patients"]}
+              />
+              <Bar
+                dataKey="patients"
+                fill="#3F8EAC"
+                radius={[6, 6, 0, 0]}
+                name="Patients"
+              />
             </BarChart>
           </ResponsiveContainer>
         </GlassCard>
@@ -2227,7 +2526,25 @@ function AnalyticsPage() {
 
   const hourlyVolume = analytics?.hourly_volume ?? [];
   const weeklyTrend = analytics?.weekly_trend ?? [];
-  const durationDist = analytics?.duration_distribution ?? [];
+
+  const durationRanges = [
+    "< 10 min",
+    "10–15 min",
+    "15–20 min",
+    "> 20 min"
+  ];
+
+  const durationDist = durationRanges.map((name) => {
+    const match = (analytics?.duration_distribution ?? []).find(
+      (item: { name?: string; duration_range?: string }) =>
+        (item.name ?? item.duration_range) === name
+    );
+
+    return {
+      name,
+      value: Number(match?.value ?? match?.percentage ?? 0)
+    };
+  });
 
   const exportAnalytics = () => {
     if (!analytics) return;
@@ -2421,10 +2738,21 @@ function AnalyticsPage() {
                     />
 
                     <YAxis
+                      allowDecimals={false}
+                      domain={[0, "dataMax + 1"]}
                       tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                      label={{
+                        value: "Patients",
+                        angle: -90,
+                        position: "insideLeft",
+                        style: { fill: "#7FB0CB", fontSize: 11 }
+                      }}
                     />
 
-                    <Tooltip contentStyle={ttStyle} />
+                    <Tooltip
+                      contentStyle={ttStyle}
+                      formatter={(value: number) => [value, "Patients"]}
+                    />
 
                     <Area
                       type="monotone"
@@ -2433,6 +2761,7 @@ function AnalyticsPage() {
                       strokeWidth={2.5}
                       fill="url(#ag)"
                       name="Patients"
+                      connectNulls
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -2456,10 +2785,21 @@ function AnalyticsPage() {
                     />
 
                     <YAxis
+                      allowDecimals={false}
+                      domain={[0, "dataMax + 1"]}
                       tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                      label={{
+                        value: "Patients",
+                        angle: -90,
+                        position: "insideLeft",
+                        style: { fill: "#7FB0CB", fontSize: 11 }
+                      }}
                     />
 
-                    <Tooltip contentStyle={ttStyle} />
+                    <Tooltip
+                      contentStyle={ttStyle}
+                      formatter={(value: number) => [value, "Patients"]}
+                    />
 
                     <Bar
                       dataKey="patients"
@@ -2491,10 +2831,15 @@ function AnalyticsPage() {
                     />
 
                     <YAxis
+                      domain={[0, 100]}
                       tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                      tickFormatter={(value) => `${value}%`}
                     />
 
-                    <Tooltip contentStyle={ttStyle} />
+                    <Tooltip
+                      contentStyle={ttStyle}
+                      formatter={(value: number) => [`${value}%`, "Efficiency"]}
+                    />
 
                     <Line
                       type="monotone"
@@ -2502,17 +2847,7 @@ function AnalyticsPage() {
                       stroke="#3F8EAC"
                       strokeWidth={2.5}
                       dot={{ fill: "#3F8EAC", r: 4 }}
-                      name="Efficiency %"
-                    />
-
-                    <Line
-                      type="monotone"
-                      dataKey="patients"
-                      stroke="#B74A42"
-                      strokeWidth={2}
-                      strokeDasharray="4 2"
-                      dot={{ fill: "#B74A42", r: 3 }}
-                      name="Patients"
+                      name="Efficiency"
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -2520,30 +2855,55 @@ function AnalyticsPage() {
 
               <GlassCard className="p-6">
                 <h3 className="font-bold mb-4" style={{ color: "#283040" }}>
-                  Consultation Duration
+                  Consultation Duration (Today)
                 </h3>
 
                 <ResponsiveContainer width="100%" height={160}>
                   <RePieChart>
-                    <Pie
-                      data={durationDist}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={68}
-                      dataKey="value"
-                      strokeWidth={0}
-                    >
-                      {durationDist.map((e, i) => (
-                        <Cell
-                          key={i}
-                          fill={
-                            ["#3F8EAC", "#7FB0CB", "#A8CDE5", "#B74A42"][i % 4]
-                          }
-                        />
-                      ))}
-                    </Pie>
+                    {durationDist.some((item) => item.value > 0) ? (
+                      <>
+                        <Pie
+                          data={durationDist.filter((item) => item.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={68}
+                          dataKey="value"
+                          strokeWidth={0}
+                        >
+                          {durationDist
+                            .filter((item) => item.value > 0)
+                            .map((e) => {
+                              const index = durationDist.findIndex(
+                                (item) => item.name === e.name
+                              );
 
-                    <Tooltip contentStyle={ttStyle} />
+                              return (
+                                <Cell
+                                  key={e.name}
+                                  fill={
+                                    ["#3F8EAC", "#7FB0CB", "#A8CDE5", "#B74A42"][
+                                      index % 4
+                                    ]
+                                  }
+                                />
+                              );
+                            })}
+                        </Pie>
+
+                        <Tooltip contentStyle={ttStyle} />
+                      </>
+                    ) : (
+                      <text
+                        x="50%"
+                        y="50%"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill="#7FB0CB"
+                        fontSize={12}
+                      >
+                        No completed consultations
+                      </text>
+                    )}
                   </RePieChart>
                 </ResponsiveContainer>
 
