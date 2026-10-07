@@ -1857,6 +1857,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
     department: string;
     specialization: string;
     status: string;
+    waiting_patients: number;
   };
 
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
@@ -1882,12 +1883,11 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
     };
 
     loadDoctors();
-  }, []);
 
-  const getDrQueue = (name: string) =>
-    patients.filter(
-      p => p.doctor === name && p.status === "waiting"
-    );
+    const interval = setInterval(loadDoctors, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const getStatusColor = (status: string) => {
     if (status === "Available") return "#16a34a";
@@ -1958,7 +1958,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 
             <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-6 mb-8">
               {doctors.map(doc => {
-                const queuePatients = getDrQueue(doc.doctor_name);
+                
 
                 return (
                   <GlassCard
@@ -2062,7 +2062,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
                           className="text-xl font-black"
                           style={{ color: "#283040" }}
                         >
-                          {queuePatients.length}
+                          {doc.waiting_patients}
                         </div>
                       </div>
                     </div>

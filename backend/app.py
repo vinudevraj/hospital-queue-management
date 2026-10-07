@@ -93,13 +93,34 @@ def get_doctors():
 
         cursor.execute("""
             SELECT
-                doctor_id,
-                doctor_name,
-                department,
-                specialization,
-                status
-            FROM doctors
-            ORDER BY CAST(SUBSTRING(doctor_id, 3) AS UNSIGNED)
+                d.doctor_id,
+                d.doctor_name,
+                d.department,
+                d.specialization,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM queue q
+                        JOIN patients p
+                            ON q.patient_id = p.patient_id
+                        WHERE p.doctor_id = d.doctor_id
+                          AND DATE(p.registered_at) = CURDATE()
+                          AND q.status = 'consulting'
+                    )
+                    THEN 'Busy'
+                    ELSE 'Available'
+                END AS status,
+                (
+                    SELECT COUNT(*)
+                    FROM queue q
+                    JOIN patients p
+                        ON q.patient_id = p.patient_id
+                    WHERE p.doctor_id = d.doctor_id
+                      AND DATE(p.registered_at) = CURDATE()
+                      AND q.status = 'waiting'
+                ) AS waiting_patients
+            FROM doctors d
+            ORDER BY CAST(SUBSTRING(d.doctor_id, 3) AS UNSIGNED)
         """)
 
         doctors = cursor.fetchall()
