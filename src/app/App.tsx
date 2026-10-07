@@ -1361,8 +1361,10 @@ function PatientPage() {
   }, [patient?.token]);
 
   const liveWait =
-    patient?.live_eta_minutes !== null &&
-    patient?.live_eta_minutes !== undefined
+    patient?.status === "consulting"
+      ? 0
+      : patient?.live_eta_minutes !== null &&
+        patient?.live_eta_minutes !== undefined
       ? patient.live_eta_minutes
       : patient?.predicted_wait_time ?? 0;
 
@@ -1453,12 +1455,6 @@ function PatientPage() {
                 {visitDate}
               </p>
 
-              <p
-                className="text-xs mt-1"
-                style={{ color: "#7A929E" }}
-              >
-                Automatically detected
-              </p>
             </div>
 
             <div
@@ -1482,12 +1478,6 @@ function PatientPage() {
                 {visitTime}
               </p>
 
-              <p
-                className="text-xs mt-1"
-                style={{ color: "#7A929E" }}
-              >
-                Updates automatically
-              </p>
             </div>
           </div>
         </div>
