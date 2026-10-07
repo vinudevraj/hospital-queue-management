@@ -1092,7 +1092,9 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                       >
                         {p.status === "consulting"
                           ? "Now"
-                          : `${p.liveEta ?? p.waitMinutes} min`}
+                          : p.status === "waiting"
+                            ? `${p.liveEta ?? p.waitMinutes} min`
+                            : "—"}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -1394,7 +1396,7 @@ function PatientPage() {
                 className="text-3xl font-bold"
                 style={{ color: "#173B4D" }}
               >
-                Predict Your Waiting Time
+                Check Your Waiting Time
               </h1>
 
               <p
@@ -1716,13 +1718,14 @@ function PatientPage() {
                 </div>
               </div>
 
-              <div
-                className="mt-8 rounded-2xl p-8 text-center border"
-                style={{
-                  backgroundColor: "#F3FAFC",
-                  borderColor: "#B9DDE8",
-                }}
-              >
+              {(patient.status === "waiting" || patient.status === "consulting") && (
+                <div
+                  className="mt-8 rounded-2xl p-8 text-center border"
+                  style={{
+                    backgroundColor: "#F3FAFC",
+                    borderColor: "#B9DDE8",
+                  }}
+                >
                 <p
                   className="text-sm font-semibold mb-2"
                   style={{ color: "#3F8EAC" }}
@@ -1748,16 +1751,17 @@ function PatientPage() {
                   className="mt-4 text-sm font-semibold"
                   style={{ color: "#5A7A8A" }}
                 >
-                  AI PREDICTED TIME: {Math.round(Number(patient.predicted_wait_time ?? 0))} min
+                  Estimated wait: {Math.round(Number(patient.predicted_wait_time ?? 0))} min
                 </p>
 
                 <p
                   className="text-sm mt-2"
                   style={{ color: "#7A929E" }}
                 >
-                  Automatically updated from the live hospital queue.
+                  
                 </p>
-              </div>
+                </div>
+              )}
             </>
           )}
         </div>
