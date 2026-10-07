@@ -143,77 +143,169 @@ function QRVisual({ token }: { token: string }) {
 // ─── Landing Page ─────────────────────────────────────────────────────────────
 
 function AnimatedHero({ onNav }: { onNav: (p: Page) => void }) {
-  const cards = [
-    { token: "T001", name: "Priya S.", status: "Now", color: "#3F8EAC", emergency: false },
-    { token: "T002", name: "Rajesh K.", status: "Emergency", color: "#B74A42", emergency: true },
-    { token: "T003", name: "Anita P.", status: "12 min", color: "#7FB0CB", emergency: false },
-    { token: "T004", name: "Vikram S.", status: "24 min", color: "#A8CDE5", emergency: false },
-  ];
   return (
-    <div className="relative w-full h-96 select-none">
-      {/* Doctor panel */}
-      <GlassCard className="absolute right-0 top-0 p-4 w-60" style={{ animation: "float 4s ease-in-out infinite" }}>
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-black text-sm" style={{ backgroundColor: "#3F8EAC" }}>RM</div>
+    <div className="relative w-full h-[420px] select-none">
+      <div
+        className="absolute inset-8 rounded-[2rem] border border-white/70"
+        style={{
+          background:
+            "linear-gradient(145deg, rgba(255,255,255,0.78), rgba(168,205,229,0.22))",
+          boxShadow: "0 24px 70px rgba(63,142,172,0.12)",
+          animation: "heroPulse 5s ease-in-out infinite",
+        }}
+      />
+
+      <GlassCard
+        className="absolute left-0 top-10 w-56 p-4"
+        style={{ animation: "float 5s ease-in-out infinite" }}
+      >
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="font-bold text-sm" style={{ color: "#283040" }}>Dr. Mehta</div>
-            <div className="text-xs" style={{ color: "#7FB0CB" }}>General Medicine</div>
+            <div className="text-xs font-semibold" style={{ color: "#7FB0CB" }}>
+              Queue Overview
+            </div>
+            <div className="text-xl font-black" style={{ color: "#283040" }}>
+              Live Queue
+            </div>
+          </div>
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: "#3F8EAC15" }}
+          >
+            <Activity size={18} style={{ color: "#3F8EAC" }} />
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs" style={{ color: "#5a7a8a" }}>
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          Consulting now
-        </div>
-        <div className="mt-3 pt-3 border-t border-[#A8CDE5]/30 text-xs font-medium" style={{ color: "#7FB0CB" }}>
-          4 patients waiting
+
+        <div className="space-y-3">
+          {[
+            ["Waiting", "5", "#3F8EAC"],
+            ["Consulting", "1", "#22c55e"],
+            ["Emergency", "1", "#B74A42"],
+          ].map(([label, value, color]) => (
+            <div
+              key={label}
+              className="flex items-center justify-between rounded-xl px-3 py-2"
+              style={{ backgroundColor: `${color}10` }}
+            >
+              <span className="text-xs font-medium" style={{ color: "#5a7a8a" }}>
+                {label}
+              </span>
+              <span className="text-sm font-black" style={{ color }}>
+                {value}
+              </span>
+            </div>
+          ))}
         </div>
       </GlassCard>
 
-      {/* Patient queue cards */}
-      {cards.map((c, i) => (
-        <GlassCard
-          key={c.token}
-          className="absolute p-3 w-52"
-          style={{
-            top: `${68 + i * 68}px`,
-            left: i % 2 === 0 ? "0" : "32px",
-            animation: `float ${3.5 + i * 0.5}s ease-in-out infinite`,
-            animationDelay: `${i * 0.4}s`,
-            opacity: 0.92,
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white" style={{ backgroundColor: c.color }}>
-                {c.name[0]}
-              </div>
-              <div>
-                <div className="text-xs font-semibold" style={{ color: "#283040" }}>{c.name}</div>
-                <div className="text-xs font-mono" style={{ color: "#7FB0CB" }}>{c.token}</div>
-              </div>
-            </div>
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: c.color + "20", color: c.color }}>
-              {c.status}
-            </span>
+      <GlassCard
+        className="absolute right-0 top-0 w-60 p-5"
+        style={{ animation: "float 4.5s ease-in-out infinite", animationDelay: "0.3s" }}
+      >
+        <div className="flex items-center gap-3 mb-5">
+          <div
+            className="w-11 h-11 rounded-2xl flex items-center justify-center"
+            style={{ backgroundColor: "#3F8EAC" }}
+          >
+            <Brain size={21} className="text-white" />
           </div>
-        </GlassCard>
-      ))}
-
-      {/* Alert bubble */}
-      <GlassCard className="absolute bottom-0 right-4 p-3 w-56 border-l-4" style={{ borderLeftColor: "#B74A42" }}>
-        <div className="flex items-center gap-2">
-          <Bell size={16} style={{ color: "#B74A42" }} className="animate-bounce" />
           <div>
-            <div className="text-xs font-bold" style={{ color: "#283040" }}>Your turn is soon!</div>
-            <div className="text-xs" style={{ color: "#5a7a8a" }}>3 patients ahead — return now.</div>
+            <div className="text-xs font-semibold" style={{ color: "#7FB0CB" }}>
+              Wait-Time Prediction
+            </div>
+            <div className="text-lg font-black" style={{ color: "#283040" }}>
+              27.8 min MAE
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="h-2 rounded-full overflow-hidden"
+          style={{ backgroundColor: "#A8CDE530" }}
+        >
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: "72%",
+              backgroundColor: "#3F8EAC",
+              animation: "progress 3s ease-in-out infinite alternate",
+            }}
+          />
+        </div>
+
+        <div className="flex justify-between mt-2 text-[11px]" style={{ color: "#7FB0CB" }}>
+          <span>Prediction engine</span>
+          <span>Active</span>
+        </div>
+      </GlassCard>
+
+      <GlassCard
+        className="absolute left-14 bottom-8 w-64 p-4"
+        style={{ animation: "float 5.5s ease-in-out infinite", animationDelay: "0.6s" }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: "#22c55e15" }}
+          >
+            <Clock size={19} style={{ color: "#16a34a" }} />
+          </div>
+          <div className="flex-1">
+            <div className="text-xs" style={{ color: "#7FB0CB" }}>
+              Live ETA
+            </div>
+            <div className="text-xl font-black" style={{ color: "#283040" }}>
+              18 min
+            </div>
+          </div>
+          <span
+            className="w-2.5 h-2.5 rounded-full bg-green-500"
+            style={{ animation: "softPulse 1.8s ease-in-out infinite" }}
+          />
+        </div>
+      </GlassCard>
+
+      <GlassCard
+        className="absolute right-10 bottom-12 w-52 p-4"
+        style={{ animation: "float 4.8s ease-in-out infinite", animationDelay: "0.9s" }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: "#B74A4215" }}
+          >
+            <Shield size={18} style={{ color: "#B74A42" }} />
+          </div>
+          <div>
+            <div className="text-xs" style={{ color: "#7FB0CB" }}>
+              Queue Priority
+            </div>
+            <div className="text-sm font-bold" style={{ color: "#283040" }}>
+              Triage-based
+            </div>
           </div>
         </div>
       </GlassCard>
 
       <style>{`
         @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-8px); }
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-7px); }
+        }
+
+        @keyframes heroPulse {
+          0%, 100% { transform: scale(1); opacity: 0.9; }
+          50% { transform: scale(1.015); opacity: 1; }
+        }
+
+        @keyframes softPulse {
+          0%, 100% { opacity: 0.45; transform: scale(0.9); }
+          50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        @keyframes progress {
+          from { width: 58%; }
+          to { width: 78%; }
         }
       `}</style>
     </div>
@@ -222,195 +314,352 @@ function AnimatedHero({ onNav }: { onNav: (p: Page) => void }) {
 
 function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
   const features = [
-    { icon: Timer, title: "Real-Time Queue Engine", desc: "Instant status updates across all devices the moment a patient is called.", color: "#3F8EAC" },
-    { icon: Brain, title: "AI Wait Prediction", desc: "ML model trained on 12,000+ consultations. 94% prediction accuracy.", color: "#7FB0CB" },
-    { icon: Bell, title: "Near-Turn Alerts", desc: "Notifies patients when 3 remain — so they arrive right on time.", color: "#B74A42" },
-    { icon: QrCode, title: "QR Queue Access", desc: "Scan token QR code to view queue position on any device.", color: "#3F8EAC" },
-    { icon: Shield, title: "Priority Management", desc: "Emergency patients auto-elevated with visual red-badge priority.", color: "#B74A42" },
-    { icon: BarChart2, title: "Analytics Suite", desc: "Executive dashboards with efficiency scores, peak hours, and trends.", color: "#7FB0CB" },
+    {
+      icon: Brain,
+      title: "Wait-Time Prediction",
+      desc: "Estimate patient waiting time from historical hospital visit and operational data.",
+      color: "#3F8EAC",
+    },
+    {
+      icon: Activity,
+      title: "Live Queue Management",
+      desc: "Monitor waiting and consulting patients while managing the active queue.",
+      color: "#7FB0CB",
+    },
+    {
+      icon: Shield,
+      title: "Priority-Based Queue",
+      desc: "Organize patients according to triage priority during queue processing.",
+      color: "#B74A42",
+    },
+    {
+      icon: Stethoscope,
+      title: "Doctor & Department Management",
+      desc: "Assign patients to available doctors and manage department-specific queues.",
+      color: "#3F8EAC",
+    },
+    {
+      icon: BarChart2,
+      title: "Analytics & Reports",
+      desc: "Review patient volume, waiting time, queue efficiency and consultation data.",
+      color: "#7FB0CB",
+    },
   ];
 
   const steps = [
-    { num: "01", icon: UserPlus, title: "Register at Reception", desc: "Patient is registered, assigned to a doctor, and receives a unique token with QR code." },
-    { num: "02", icon: Wifi, title: "Wait Anywhere", desc: "Patient leaves the waiting room. Real-time updates sent to their device via the portal." },
-    { num: "03", icon: Bell, title: "Return When Ready", desc: "Alert fires when 3 patients remain. Patient returns and is called in immediately." },
-  ];
-
-  const testimonials = [
-    { name: "Dr. Ananya Rao", role: "Medical Director, Apollo Clinics", text: "Hospital Queue Management reduced our average patient wait time by 40%. The AI predictions are remarkably accurate and our staff adopted it within a day.", stars: 5 },
-    { name: "Suresh Menon", role: "Operations Head, Fortis Healthcare", text: "Our patients love waiting at the café instead of the waiting room. Patient satisfaction scores hit an all-time high last quarter.", stars: 5 },
-    { name: "Priya Krishnamurthy", role: "Clinic Administrator, Manipal", text: "The reception dashboard is intuitive and powerful. We went live in under 2 hours. Zero training required.", stars: 5 },
+    {
+      num: "01",
+      icon: UserPlus,
+      title: "Register Patient",
+      desc: "Enter patient details and assign the appropriate department, doctor and triage priority.",
+    },
+    {
+      num: "02",
+      icon: Brain,
+      title: "Estimate Wait Time",
+      desc: "The trained machine-learning model generates an initial waiting-time estimate.",
+    },
+    {
+      num: "03",
+      icon: Activity,
+      title: "Manage the Queue",
+      desc: "Staff call patients in priority order and monitor the live queue from the dashboard.",
+    },
+    {
+      num: "04",
+      icon: Clock,
+      title: "Track Live ETA",
+      desc: "The system updates the estimated time until consultation as the queue changes.",
+    },
   ];
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#DDEEF8", fontFamily: "Inter, sans-serif" }}>
-      {/* Nav */}
-      <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-[#A8CDE5]/30">
+    <div
+      className="min-h-screen"
+      style={{ backgroundColor: "#DDEEF8", fontFamily: "Inter, sans-serif" }}
+    >
+      <nav className="fixed top-0 w-full z-50 bg-white/85 backdrop-blur-md border-b border-[#A8CDE5]/30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
+          <button
+            onClick={() => onNav("landing")}
+            className="flex items-center gap-2"
+          >
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#3F8EAC" }}
+            >
               <Heart size={15} className="text-white" />
             </div>
-            <span className="font-black text-xl" style={{ color: "#283040" }}>Hospital Queue Management</span>
+            <span className="font-black text-lg" style={{ color: "#283040" }}>
+              Hospital Queue Management
+            </span>
+          </button>
+
+          <div
+            className="hidden md:flex items-center gap-7 text-sm font-medium"
+            style={{ color: "#5a7a8a" }}
+          >
+            <a href="#features" className="hover:text-[#3F8EAC] transition-colors">
+              Features
+            </a>
+            <a href="#how" className="hover:text-[#3F8EAC] transition-colors">
+              How It Works
+            </a>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium" style={{ color: "#5a7a8a" }}>
-            <a href="#features" className="hover:text-[#3F8EAC] transition-colors">Features</a>
-            <a href="#how" className="hover:text-[#3F8EAC] transition-colors">How It Works</a>
-            <a href="#testimonials" className="hover:text-[#3F8EAC] transition-colors">Testimonials</a>
-          </div>
+
           <div className="flex items-center gap-3">
-            <button onClick={() => onNav("reception")} className="text-sm font-semibold hover:text-[#3F8EAC] transition-colors" style={{ color: "#5a7a8a" }}>Sign In</button>
-            <button onClick={() => onNav("reception")} className="px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg transition-all" style={{ backgroundColor: "#3F8EAC" }}>Get Started</button>
+            <button
+              onClick={() => onNav("reception")}
+              className="px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg transition-all"
+              style={{ backgroundColor: "#3F8EAC" }}
+            >
+              Sign In
+            </button>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="pt-32 pb-16 px-6">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+      <section className="pt-28 pb-10 px-6">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-10 items-center">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-6" style={{ backgroundColor: "#3F8EAC15", color: "#3F8EAC", border: "1px solid #3F8EAC30" }}>
-              <Zap size={11} /> AI-Powered Hospital Queue Management
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-5"
+              style={{
+                backgroundColor: "#3F8EAC15",
+                color: "#3F8EAC",
+                border: "1px solid #3F8EAC30",
+              }}
+            >
+              <Brain size={12} />
+              AI-Powered Hospital Queue Management
             </div>
-            <h1 className="text-5xl lg:text-6xl font-black leading-tight mb-5" style={{ color: "#283040" }}>
-              Predict Wait Time.<br />
+
+            <h1
+              className="text-5xl lg:text-6xl font-black leading-[1.05] mb-5"
+              style={{ color: "#283040" }}
+            >
+              Predict Wait Time.
+              <br />
               <span style={{ color: "#3F8EAC" }}>Manage the Queue.</span>
             </h1>
-            <p className="text-lg leading-relaxed mb-8 max-w-lg" style={{ color: "#5a7a8a" }}>
-              An AI-powered hospital queue management system that predicts patient waiting time using hospital visit and staffing data.
+
+            <p
+              className="text-lg leading-relaxed mb-7 max-w-xl"
+              style={{ color: "#5a7a8a" }}
+            >
+              Estimate patient waiting time using historical hospital data
+              and manage the live queue through a unified staff dashboard.
             </p>
+
             <div className="flex flex-wrap gap-3">
-              <button onClick={() => onNav("reception")} className="px-6 py-3.5 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2" style={{ backgroundColor: "#3F8EAC" }}>
+              <button
+                onClick={() => onNav("reception")}
+                className="px-6 py-3.5 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                style={{ backgroundColor: "#3F8EAC" }}
+              >
                 Get Started <ArrowRight size={16} />
               </button>
-              <button onClick={() => onNav("patient")} className="px-6 py-3.5 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all" style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}>
+
+              <button
+                onClick={() => onNav("patient")}
+                className="px-6 py-3.5 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all"
+                style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}
+              >
                 Patient Prediction
               </button>
             </div>
-            <div className="mt-10 flex gap-8">
-              {[{ v: "5,000", l: "Patient Records" }, { v: "50", l: "Providers" }, { v: "10", l: "Departments" }].map(s => (
-                <div key={s.l}>
-                  <div className="text-2xl font-black" style={{ color: "#3F8EAC" }}>{s.v}</div>
-                  <div className="text-xs font-medium mt-0.5" style={{ color: "#7FB0CB" }}>{s.l}</div>
+
+            <div className="mt-8 flex gap-8">
+              {[
+                ["5,000+", "Historical Records"],
+                ["50", "Providers"],
+                ["10", "Departments"],
+              ].map(([value, label]) => (
+                <div key={label}>
+                  <div
+                    className="text-2xl font-black"
+                    style={{ color: "#3F8EAC" }}
+                  >
+                    {value}
+                  </div>
+                  <div
+                    className="text-xs font-medium mt-0.5"
+                    style={{ color: "#7FB0CB" }}
+                  >
+                    {label}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
+
           <div className="hidden lg:block">
             <AnimatedHero onNav={onNav} />
           </div>
         </div>
       </section>
 
-      {/* Stats Banner */}
-      <section className="py-8 px-6">
+      <section id="features" className="py-14 px-6">
         <div className="max-w-7xl mx-auto">
-          <GlassCard className="p-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              {[
-                { label: "Patients Served", to: 128450, suffix: "+" },
-                { label: "Wait Reduction", to: 40, suffix: "%" },
-                { label: "Clinics Onboarded", to: 512, suffix: "+" },
-                { label: "Cities Covered", to: 28, suffix: "" },
-              ].map(s => (
-                <div key={s.label}>
-                  <div className="text-4xl font-black mb-1" style={{ color: "#3F8EAC" }}>
-                    <AnimCounter to={s.to} suffix={s.suffix} />
-                  </div>
-                  <div className="text-sm font-medium" style={{ color: "#5a7a8a" }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          </GlassCard>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section id="features" className="py-20 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-4xl font-black mb-4" style={{ color: "#283040" }}>Everything a clinic needs</h2>
-            <p className="max-w-md mx-auto" style={{ color: "#5a7a8a" }}>A complete patient flow management platform built for modern healthcare.</p>
+          <div className="text-center mb-9">
+            <h2
+              className="text-3xl font-black mb-2"
+              style={{ color: "#283040" }}
+            >
+              Core Capabilities
+            </h2>
+            <p
+              className="max-w-xl mx-auto text-sm"
+              style={{ color: "#5a7a8a" }}
+            >
+              The features used by the hospital queue management workflow.
+            </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map(f => (
-              <GlassCard key={f.title} className="p-6 hover:shadow-xl hover:-translate-y-1 transition-all cursor-default">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: f.color + "15" }}>
-                  <f.icon size={24} style={{ color: f.color }} />
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {features.map((f) => (
+              <GlassCard
+                key={f.title}
+                className="p-5 hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+              >
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
+                  style={{ backgroundColor: f.color + "15" }}
+                >
+                  <f.icon size={22} style={{ color: f.color }} />
                 </div>
-                <h3 className="font-bold text-lg mb-2" style={{ color: "#283040" }}>{f.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#5a7a8a" }}>{f.desc}</p>
+                <h3
+                  className="font-bold text-base mb-2"
+                  style={{ color: "#283040" }}
+                >
+                  {f.title}
+                </h3>
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: "#5a7a8a" }}
+                >
+                  {f.desc}
+                </p>
               </GlassCard>
             ))}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how" className="py-20 px-6">
+      <section id="how" className="py-14 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-4xl font-black mb-4" style={{ color: "#283040" }}>How It Works</h2>
-            <p style={{ color: "#5a7a8a" }}>Three effortless steps to a better clinic experience.</p>
+          <div className="text-center mb-9">
+            <h2
+              className="text-3xl font-black mb-2"
+              style={{ color: "#283040" }}
+            >
+              How It Works
+            </h2>
+            <p className="text-sm" style={{ color: "#5a7a8a" }}>
+              From patient registration to live queue management.
+            </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            {steps.map((s, i) => (
-              <div key={s.num} className="relative">
-                <GlassCard className="p-8">
-                  <div className="text-6xl font-black mb-4 leading-none" style={{ color: "#3F8EAC08" }}>{s.num}</div>
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: "#3F8EAC" }}>
-                    <s.icon size={22} className="text-white" />
-                  </div>
-                  <h3 className="font-bold text-xl mb-3" style={{ color: "#283040" }}>{s.title}</h3>
-                  <p className="text-sm leading-relaxed" style={{ color: "#5a7a8a" }}>{s.desc}</p>
-                </GlassCard>
-                {i < 2 && (
-                  <div className="hidden md:flex absolute top-1/2 -right-4 z-10 w-8 h-8 rounded-full items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
-                    <ArrowRight size={14} className="text-white" />
-                  </div>
-                )}
-              </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {steps.map((step) => (
+              <GlassCard
+                key={step.num}
+                className="p-6 relative overflow-hidden"
+              >
+                <div
+                  className="absolute right-4 top-3 text-5xl font-black"
+                  style={{ color: "#3F8EAC08" }}
+                >
+                  {step.num}
+                </div>
+
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
+                  style={{ backgroundColor: "#3F8EAC" }}
+                >
+                  <step.icon size={20} className="text-white" />
+                </div>
+
+                <h3
+                  className="font-bold text-lg mb-2"
+                  style={{ color: "#283040" }}
+                >
+                  {step.title}
+                </h3>
+
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: "#5a7a8a" }}
+                >
+                  {step.desc}
+                </p>
+              </GlassCard>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 px-6">
+      <section className="px-6 py-10">
         <div className="max-w-4xl mx-auto">
-          <GlassCard className="p-12 text-center" style={{ background: "linear-gradient(135deg, rgba(63,142,172,0.08), rgba(168,205,229,0.15))" }}>
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: "#3F8EAC" }}>
-              <Heart size={28} className="text-white" />
-            </div>
-            <h2 className="text-4xl font-black mb-4" style={{ color: "#283040" }}>Ready to transform your clinic?</h2>
-            <p className="mb-8 max-w-xl mx-auto" style={{ color: "#5a7a8a" }}>Use patient and hospital information to estimate waiting time and support efficient queue management.</p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <button onClick={() => onNav("reception")} className="px-8 py-4 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all flex items-center gap-2" style={{ backgroundColor: "#3F8EAC" }}>
-                Start Free Trial <ArrowRight size={18} />
+          <GlassCard
+            className="p-9 text-center"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(63,142,172,0.08), rgba(168,205,229,0.15))",
+            }}
+          >
+            <h2
+              className="text-3xl font-black mb-3"
+              style={{ color: "#283040" }}
+            >
+              Hospital Queue Management System
+            </h2>
+            <p
+              className="mb-6 max-w-xl mx-auto text-sm leading-relaxed"
+              style={{ color: "#5a7a8a" }}
+            >
+              A data-driven system for patient registration, queue management,
+              wait-time prediction and operational analytics.
+            </p>
+
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => onNav("reception")}
+                className="px-6 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                style={{ backgroundColor: "#3F8EAC" }}
+              >
+                Open Reception <ArrowRight size={17} />
               </button>
-              <button onClick={() => onNav("analytics")} className="px-8 py-4 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all flex items-center gap-2" style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}>
-                View Analytics Demo
+
+              <button
+                onClick={() => onNav("eta")}
+                className="px-6 py-3 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all"
+                style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}
+              >
+                View Analytics
               </button>
             </div>
           </GlassCard>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 px-6 border-t border-[#A8CDE5]/30">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-3">
+      <footer className="py-6 px-6 border-t border-[#A8CDE5]/30">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#3F8EAC" }}>
+            <div
+              className="w-6 h-6 rounded-lg flex items-center justify-center"
+              style={{ backgroundColor: "#3F8EAC" }}
+            >
               <Heart size={11} className="text-white" />
             </div>
-            <span className="font-black text-sm" style={{ color: "#283040" }}>Hospital Queue Management</span>
+            <span className="font-bold text-sm" style={{ color: "#283040" }}>
+              Hospital Queue Management System
+            </span>
           </div>
-          <p className="text-xs" style={{ color: "#7FB0CB" }}>© 2024 Hospital Queue Management Health Technologies. Healthcare that knows when it&apos;s your turn.</p>
-          <div className="flex gap-4 text-xs font-medium" style={{ color: "#7FB0CB" }}>
-            <a href="#" className="hover:text-[#3F8EAC] transition-colors">Privacy</a>
-            <a href="#" className="hover:text-[#3F8EAC] transition-colors">Terms</a>
-            <a href="#" className="hover:text-[#3F8EAC] transition-colors">Contact</a>
-          </div>
+
+          <p className="text-xs" style={{ color: "#7FB0CB" }}>
+            © 2026 Hospital Queue Management System
+          </p>
         </div>
       </footer>
     </div>
