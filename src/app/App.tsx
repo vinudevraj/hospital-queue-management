@@ -1261,17 +1261,8 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
 function PatientPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [predictionGeneratedAt, setPredictionGeneratedAt] = useState<Date | null>(null);
-
-  const [formData, setFormData] = useState({
-    AgeGroup: "Adult (36-60)",
-    Department: "Internal Medicine",
-    AppointmentType: "New Patient",
-    ArrivalMethod: "Walk-in",
-    TriageCategory: "Non-urgent",
-  });
-
-  const [prediction, setPrediction] = useState<number | null>(null);
+  const [token, setToken] = useState("");
+  const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -1296,90 +1287,91 @@ function PatientPage() {
     hour12: true,
   });
 
-  const handlePredict = async () => {
+  const getAgeGroup = (age: number) => {
+    if (age <= 17) return "Pediatric (0-17)";
+    if (age <= 35) return "Young Adult (18-35)";
+    if (age <= 60) return "Adult (36-60)";
+    return "Senior (61+)";
+  };
+
+  const lookupPatient = async () => {
+    const enteredToken = token.trim().toUpperCase();
+
+    if (!enteredToken) {
+      setError("Please enter your token number.");
+      setPatient(null);
+      return;
+    }
+
     setLoading(true);
-    setPrediction(null);
     setError("");
-
-    const predictionTime = new Date();
-    setPredictionGeneratedAt(predictionTime);
-
-    const dayNames = [
-      "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
-    ];
-
-    const monthNames = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-    ];
-
-    const arrivalHour = predictionTime.getHours();
-    const dayOfWeek = dayNames[predictionTime.getDay()];
-    const month = monthNames[predictionTime.getMonth()];
-    const isWeekend =
-      predictionTime.getDay() === 0 ||
-      predictionTime.getDay() === 6;
-
-    const facilityOccupancyRate = 0.75;
-    const providersOnShift = 10;
-    const nursesOnShift = 20;
-
-    const staffToPatientRatio =
-      providersOnShift / (providersOnShift + nursesOnShift);
+    setPatient(null);
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/predict",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            AgeGroup: formData.AgeGroup,
-            Department: formData.Department,
-            AppointmentType: formData.AppointmentType,
-            ArrivalMethod: formData.ArrivalMethod,
-            TriageCategory: formData.TriageCategory,
-            FacilityOccupancyRate: facilityOccupancyRate,
-            ProvidersOnShift: providersOnShift,
-            NursesOnShift: nursesOnShift,
-            StaffToPatientRatio: staffToPatientRatio,
-            ArrivalHour: arrivalHour,
-            DayOfWeek: dayOfWeek,
-            IsWeekend: isWeekend,
-            Month: month,
-          }),
-        }
+        `http://127.0.0.1:5000/patients/token/${encodeURIComponent(enteredToken)}`
       );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Unable to predict waiting time."
+          data.error || "Patient token could not be found."
         );
       }
 
-      setPrediction(data.predicted_wait_time_minutes);
-    } catch (err) {
+      setPatient(data);
+    } catch (err: any) {
       setError(
-        "Unable to connect to the prediction server. Please make sure the Flask backend is running."
+        err.message ||
+        "Unable to connect to the hospital queue server."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const updateField = (
-    field: keyof typeof formData,
-    value: string
-  ) => {
-    setFormData((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-  };
+  useEffect(() => {
+    if (!patient?.token) {
+      return;
+    }
+
+    const refreshPatient = async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:5000/patients/token/${encodeURIComponent(patient.token)}`
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        setPatient(data);
+      } catch {
+        // Keep the last successful patient state if a refresh fails.
+      }
+    };
+
+    const interval = setInterval(refreshPatient, 5000);
+
+    return () => clearInterval(interval);
+  }, [patient?.token]);
+
+  const liveWait =
+    patient?.live_eta_minutes !== null &&
+    patient?.live_eta_minutes !== undefined
+      ? patient.live_eta_minutes
+      : patient?.predicted_wait_time ?? 0;
+
+  const statusLabel =
+    patient?.status === "consulting"
+      ? "Consulting Now"
+      : patient?.status === "completed"
+      ? "Completed"
+      : patient?.status === "waiting"
+      ? "Waiting"
+      : patient?.status || "";
 
   return (
     <div className="min-h-screen px-6 py-10">
@@ -1409,7 +1401,7 @@ function PatientPage() {
                 className="mt-1"
                 style={{ color: "#5a7a8a" }}
               >
-                Enter your visit details to estimate your hospital waiting time.
+                Enter your token number to view your hospital queue details.
               </p>
             </div>
           </div>
@@ -1512,142 +1504,41 @@ function PatientPage() {
             Patient Information
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label
+              className="block text-sm font-semibold mb-2"
+              style={{ color: "#365766" }}
+            >
+              Token Number
+            </label>
 
-            <div>
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ color: "#365766" }}
-              >
-                Age Group
-              </label>
-
-              <select
-                value={formData.AgeGroup}
-                onChange={(e) =>
-                  updateField("AgeGroup", e.target.value)
-                }
-                className="w-full px-4 py-3 rounded-xl border outline-none"
+            <div className="flex flex-col md:flex-row gap-3">
+              <input
+                value={token}
+                onChange={(e) => {
+                  setToken(e.target.value.toUpperCase());
+                  setError("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    lookupPatient();
+                  }
+                }}
+                placeholder="Enter your token number, e.g. T5017"
+                className="flex-1 px-4 py-3 rounded-xl border outline-none"
                 style={{ borderColor: "#C9DEE6" }}
-              >
-                <option>Adult (36-60)</option>
-                <option>Young Adult (18-35)</option>
-                <option>Senior (61+)</option>
-                <option>Pediatric (0-17)</option>
-              </select>
-            </div>
+              />
 
-            <div>
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ color: "#365766" }}
+              <button
+                onClick={lookupPatient}
+                disabled={loading}
+                className="px-7 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: "#3F8EAC" }}
               >
-                Department
-              </label>
-
-              <select
-                value={formData.Department}
-                onChange={(e) =>
-                  updateField("Department", e.target.value)
-                }
-                className="w-full px-4 py-3 rounded-xl border outline-none"
-                style={{ borderColor: "#C9DEE6" }}
-              >
-                <option>Orthopedics</option>
-                <option>Cardiology</option>
-                <option>General Surgery</option>
-                <option>Emergency</option>
-                <option>Radiology</option>
-                <option>Obstetrics</option>
-                <option>Neurology</option>
-                <option>Oncology</option>
-                <option>Pediatrics</option>
-                <option>Internal Medicine</option>
-              </select>
-            </div>
-
-            <div>
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ color: "#365766" }}
-              >
-                Appointment Type
-              </label>
-
-              <select
-                value={formData.AppointmentType}
-                onChange={(e) =>
-                  updateField("AppointmentType", e.target.value)
-                }
-                className="w-full px-4 py-3 rounded-xl border outline-none"
-                style={{ borderColor: "#C9DEE6" }}
-              >
-                <option>New Patient</option>
-                <option>Specialist Referral</option>
-                <option>Urgent Care</option>
-                <option>Follow-up</option>
-              </select>
-            </div>
-
-            <div>
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ color: "#365766" }}
-              >
-                Arrival Method
-              </label>
-
-              <select
-                value={formData.ArrivalMethod}
-                onChange={(e) =>
-                  updateField("ArrivalMethod", e.target.value)
-                }
-                className="w-full px-4 py-3 rounded-xl border outline-none"
-                style={{ borderColor: "#C9DEE6" }}
-              >
-                <option>Walk-in</option>
-                <option>Scheduled</option>
-                <option>Emergency</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-2">
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ color: "#365766" }}
-              >
-                Triage Category
-              </label>
-
-              <select
-                value={formData.TriageCategory}
-                onChange={(e) =>
-                  updateField("TriageCategory", e.target.value)
-                }
-                className="w-full px-4 py-3 rounded-xl border outline-none"
-                style={{ borderColor: "#C9DEE6" }}
-              >
-                <option>Non-urgent</option>
-                <option>Urgent</option>
-                <option>Semi-urgent</option>
-                <option>Emergency</option>
-                <option>Immediate</option>
-              </select>
+                {loading ? "Checking..." : "View My Queue"}
+              </button>
             </div>
           </div>
-
-          <button
-            onClick={handlePredict}
-            disabled={loading}
-            className="w-full mt-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-60"
-            style={{ backgroundColor: "#3F8EAC" }}
-          >
-            <Brain className="w-5 h-5" />
-
-            {loading
-              ? "Predicting Waiting Time..."
-              : "Predict My Waiting Time"}
-          </button>
 
           {error && (
             <div
@@ -1661,74 +1552,220 @@ function PatientPage() {
             </div>
           )}
 
-          {prediction !== null && !error && (
-            <div
-              className="mt-8 rounded-2xl p-8 text-center border"
-              style={{
-                backgroundColor: "#F3FAFC",
-                borderColor: "#B9DDE8",
-              }}
-            >
-              <p
-                className="text-sm font-semibold mb-2"
-                style={{ color: "#5A7A8A" }}
-              >
-                Estimated Waiting Time
-              </p>
+          {patient && !error && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
 
-              <div
-                className="text-5xl font-bold"
-                style={{ color: "#3F8EAC" }}
-              >
-                {prediction.toFixed(2)}
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Patient Name
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.patient_name}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Age
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.age} years · {getAgeGroup(patient.age)}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Doctor
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.doctor_name || "Not assigned"}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Department
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.department}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Condition
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.condition_name}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Triage Category
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.triage_category}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Queue Position
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#173B4D",
+                    }}
+                  >
+                    {patient.queue_position === 0
+                      ? "Consulting Now"
+                      : patient.queue_position
+                      ? `#${patient.queue_position}`
+                      : "Not in active queue"}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Status
+                  </label>
+                  <div
+                    className="w-full px-4 py-3 rounded-xl border font-semibold"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color:
+                        patient.status === "consulting"
+                          ? "#3F8EAC"
+                          : "#173B4D",
+                    }}
+                  >
+                    {statusLabel}
+                  </div>
+                </div>
               </div>
 
-              <p
-                className="mt-2 font-medium"
-                style={{ color: "#365766" }}
-              >
-                minutes
-              </p>
-
-              <p
-                className="text-sm mt-5"
-                style={{ color: "#7A929E" }}
-              >
-                Estimated using the hospital waiting-time prediction model.
-              </p>
-
               <div
-                className="mt-5 pt-5 border-t text-sm"
-                style={{ borderColor: "#D9EAF0" }}
+                className="mt-8 rounded-2xl p-8 text-center border"
+                style={{
+                  backgroundColor: "#F3FAFC",
+                  borderColor: "#B9DDE8",
+                }}
               >
-                <span style={{ color: "#7A929E" }}>
-                  Prediction generated at:
-                </span>{" "}
+                <p
+                  className="text-sm font-semibold mb-2"
+                  style={{ color: "#3F8EAC" }}
+                >
+                  Live Waiting Time
+                </p>
 
-                <span
-                  className="font-semibold"
+                <div
+                  className="text-5xl font-bold"
+                  style={{ color: "#3F8EAC" }}
+                >
+                  {liveWait}
+                </div>
+
+                <p
+                  className="mt-2 font-medium"
                   style={{ color: "#365766" }}
                 >
-                  {predictionGeneratedAt
-                    ? predictionGeneratedAt.toLocaleString("en-IN", {
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: true,
-                      })
-                    : ""}
-                </span>
+                  minutes
+                </p>
+
+                <p
+                  className="mt-4 text-sm font-semibold"
+                  style={{ color: "#5A7A8A" }}
+                >
+                  AI PREDICTED TIME: {Math.round(Number(patient.predicted_wait_time ?? 0))} min
+                </p>
+
+                <p
+                  className="text-sm mt-2"
+                  style={{ color: "#7A929E" }}
+                >
+                  Automatically updated from the live hospital queue.
+                </p>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
     </div>
   );
 }
+
 function ETAPage() {
   const insights = [
     { text: "Current wait time is 23% lower than Tuesday's average for this hour.", good: true },

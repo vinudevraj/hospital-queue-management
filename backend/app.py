@@ -141,6 +141,204 @@ def get_doctors():
             connection.close()
 
 
+
+@app.route("/patients/token/<token>", methods=["GET"])
+def get_patient_by_token(token):
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                p.patient_id,
+                p.token,
+                p.patient_name,
+                p.age,
+                p.gender,
+                p.phone,
+                p.condition_name,
+                p.doctor_id,
+                d.doctor_name,
+                p.department,
+                p.triage_category,
+                p.predicted_wait_time,
+                p.status,
+                p.is_emergency,
+                p.registered_at,
+                p.appointment_date,
+                q.queue_id,
+                q.priority,
+                q.queue_position,
+                q.status AS queue_status,
+                q.added_at,
+                q.consulting_started_at
+            FROM patients p
+            LEFT JOIN doctors d
+                ON p.doctor_id = d.doctor_id
+            LEFT JOIN queue q
+                ON q.patient_id = p.patient_id
+            WHERE UPPER(p.token) = UPPER(%s)
+              AND DATE(p.registered_at) = CURDATE()
+            ORDER BY q.queue_id DESC
+            LIMIT 1
+        """, (token.strip(),))
+
+        patient = cursor.fetchone()
+
+        if not patient:
+            return jsonify({
+                "error": "Patient token not found for today."
+            }), 404
+
+        # Historical average consultation duration by department.
+        cursor.execute("""
+            SELECT
+                Department,
+                AVG(ConsultationDurationTime) AS avg_duration
+            FROM hospital_wait_data
+            WHERE ConsultationDurationTime IS NOT NULL
+              AND ConsultationDurationTime > 0
+            GROUP BY Department
+        """)
+
+        department_service_times = {
+            row["Department"]: max(1, round(float(row["avg_duration"])))
+            for row in cursor.fetchall()
+            if row["Department"]
+        }
+
+        default_service_time = 20
+        live_eta_minutes = None
+        queue_position = None
+
+        # Only active queue entries have a live ETA.
+        if patient["queue_status"] in ("waiting", "consulting"):
+
+            cursor.execute("""
+                SELECT
+                    q.queue_id,
+                    q.patient_id,
+                    q.token,
+                    q.status,
+                    q.priority,
+                    q.added_at,
+                    q.consulting_started_at,
+                    p.department
+                FROM queue q
+                JOIN patients p
+                    ON q.patient_id = p.patient_id
+                WHERE DATE(p.registered_at) = CURDATE()
+                  AND q.status IN ("waiting", "consulting")
+                  AND p.department = %s
+                ORDER BY
+                    q.priority ASC,
+                    q.added_at ASC,
+                    q.queue_id ASC
+            """, (patient["department"],))
+
+            department_rows = cursor.fetchall()
+
+            consulting_remaining = 0
+            waiting_rows = []
+
+            service_time = department_service_times.get(
+                patient["department"] or "General",
+                default_service_time
+            )
+
+            for row in department_rows:
+                if row["status"] == "consulting":
+                    remaining = service_time
+
+                    if row["consulting_started_at"]:
+                        cursor.execute("""
+                            SELECT GREATEST(
+                                0,
+                                %s * 60 - TIMESTAMPDIFF(
+                                    SECOND,
+                                    %s,
+                                    NOW()
+                                )
+                            ) AS remaining_seconds
+                        """, (
+                            service_time,
+                            row["consulting_started_at"]
+                        ))
+
+                        remaining_seconds = int(
+                            cursor.fetchone()["remaining_seconds"]
+                        )
+
+                        remaining = (
+                            remaining_seconds + 59
+                        ) // 60
+
+                    consulting_remaining = max(
+                        consulting_remaining,
+                        remaining
+                    )
+
+                elif row["status"] == "waiting":
+                    waiting_rows.append(row)
+
+            if patient["queue_status"] == "consulting":
+                queue_position = 0
+                live_eta_minutes = consulting_remaining
+
+            else:
+                matching_index = next(
+                    (
+                        index
+                        for index, row in enumerate(waiting_rows)
+                        if row["patient_id"] == patient["patient_id"]
+                    ),
+                    None
+                )
+
+                if matching_index is not None:
+                    queue_position = matching_index + 1
+                    live_eta_minutes = consulting_remaining
+
+                    for prior_row in waiting_rows[:matching_index]:
+                        prior_service_time = department_service_times.get(
+                            prior_row["department"] or "General",
+                            default_service_time
+                        )
+                        live_eta_minutes += prior_service_time
+
+        for field in [
+            "registered_at",
+            "appointment_date",
+            "added_at",
+            "consulting_started_at"
+        ]:
+            if patient.get(field):
+                patient[field] = patient[field].isoformat()
+
+        patient["queue_position"] = queue_position
+        patient["live_eta_minutes"] = live_eta_minutes
+
+        return jsonify(patient), 200
+
+    except mysql.connector.Error as error:
+        return jsonify({
+            "error": "Database operation failed",
+            "message": str(error),
+            "mysql_error_code": error.errno
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
 @app.route("/patients", methods=["GET"])
 def get_patients():
     connection = None
