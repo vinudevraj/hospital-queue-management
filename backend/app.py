@@ -280,6 +280,95 @@ def get_analytics():
             for row in duration_rows
         ]
 
+        # Patients by department today.
+        cursor.execute("""
+            SELECT
+                p.department AS name,
+                COUNT(*) AS patients
+            FROM patients p
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND p.department IS NOT NULL
+              AND p.department <> ''
+            GROUP BY p.department
+            ORDER BY patients DESC, p.department ASC
+        """, (LIVE_PATIENT_ID_MIN,))
+        department_rows = cursor.fetchall()
+
+        patients_by_department = [
+            {
+                "name": row["name"],
+                "patients": int(row["patients"])
+            }
+            for row in department_rows
+        ]
+
+        # Patients by triage priority today.
+        cursor.execute("""
+            SELECT
+                p.triage_category AS name,
+                COUNT(*) AS patients
+            FROM patients p
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND p.triage_category IS NOT NULL
+              AND p.triage_category <> ''
+            GROUP BY p.triage_category
+            ORDER BY
+                CASE LOWER(p.triage_category)
+                    WHEN 'emergency' THEN 1
+                    WHEN 'immediate' THEN 2
+                    WHEN 'urgent' THEN 3
+                    WHEN 'semi-urgent' THEN 4
+                    WHEN 'non-urgent' THEN 5
+                    ELSE 6
+                END
+        """, (LIVE_PATIENT_ID_MIN,))
+        priority_rows = cursor.fetchall()
+
+        patients_by_priority = [
+            {
+                "name": row["name"],
+                "patients": int(row["patients"])
+            }
+            for row in priority_rows
+        ]
+
+        # Average actual wait time by department today.
+        cursor.execute("""
+            SELECT
+                p.department AS name,
+                ROUND(
+                    AVG(
+                        TIMESTAMPDIFF(
+                            SECOND,
+                            q.added_at,
+                            q.consulting_started_at
+                        ) / 60
+                    )
+                ) AS average_wait
+            FROM queue q
+            JOIN patients p
+                ON q.patient_id = p.patient_id
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND q.status = 'completed'
+              AND q.added_at IS NOT NULL
+              AND q.consulting_started_at IS NOT NULL
+              AND q.consulting_started_at >= q.added_at
+            GROUP BY p.department
+            ORDER BY average_wait DESC, p.department ASC
+        """, (LIVE_PATIENT_ID_MIN,))
+        department_wait_rows = cursor.fetchall()
+
+        average_wait_by_department = [
+            {
+                "name": row["name"],
+                "average_wait": int(row["average_wait"] or 0)
+            }
+            for row in department_wait_rows
+        ]
+
         cursor.execute("""
             SELECT
                 p.patient_id,
@@ -362,6 +451,9 @@ def get_analytics():
             "hourly_volume": hourly_volume,
             "weekly_trend": weekly_trend,
             "duration_distribution": duration_distribution,
+            "patients_by_department": patients_by_department,
+            "patients_by_priority": patients_by_priority,
+            "average_wait_by_department": average_wait_by_department,
             "patient_records": patient_records
         })
 

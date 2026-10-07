@@ -1934,10 +1934,10 @@ function ETAPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>
-            Smart ETA Prediction
+            Analytics & ETA
           </h1>
           <p className="text-sm" style={{ color: "#7FB0CB" }}>
-            Live queue status and wait-time analysis
+            Live queue monitoring and hospital performance analysis
           </p>
         </div>
 
@@ -2083,6 +2083,8 @@ function ETAPage() {
                   tick={{ fontSize: 11, fill: "#7FB0CB" }}
                 />
                 <YAxis
+                  allowDecimals={false}
+                  domain={[0, "dataMax + 1"]}
                   tick={{ fontSize: 11, fill: "#7FB0CB" }}
                 />
                 <Tooltip contentStyle={ttStyle} />
@@ -2134,45 +2136,6 @@ function ETAPage() {
           </GlassCard>
         </div>
 
-        {/* Hourly Volume */}
-        <GlassCard className="p-6">
-          <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
-            Hourly Patient Volume
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={hourlyVolume} barGap={4}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="rgba(168,205,229,0.35)"
-              />
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 11, fill: "#7FB0CB" }}
-              />
-              <YAxis
-                allowDecimals={false}
-                domain={[0, "dataMax + 1"]}
-                tick={{ fontSize: 11, fill: "#7FB0CB" }}
-                label={{
-                  value: "Patients",
-                  angle: -90,
-                  position: "insideLeft",
-                  style: { fill: "#7FB0CB", fontSize: 11 }
-                }}
-              />
-              <Tooltip
-                contentStyle={ttStyle}
-                formatter={(value: number) => [value, "Patients"]}
-              />
-              <Bar
-                dataKey="patients"
-                fill="#3F8EAC"
-                radius={[6, 6, 0, 0]}
-                name="Patients"
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </GlassCard>
       </div>
     </div>
   );
@@ -2515,17 +2478,17 @@ function AnalyticsPage() {
     {
       label: "Emergency Cases",
       value: analytics ? analytics.emergency_cases : "—",
-      change: analytics
-        ? `${analytics.waiting_patients} waiting · ${analytics.consulting_patients} consulting`
-        : "Loading...",
+      change: "Recorded today",
       good: false,
       icon: Shield,
       color: "#B74A42"
     }
   ];
 
-  const hourlyVolume = analytics?.hourly_volume ?? [];
   const weeklyTrend = analytics?.weekly_trend ?? [];
+  const patientsByDepartment = analytics?.patients_by_department ?? [];
+  const patientsByPriority = analytics?.patients_by_priority ?? [];
+  const averageWaitByDepartment = analytics?.average_wait_by_department ?? [];
 
   const durationRanges = [
     "< 10 min",
@@ -2600,7 +2563,7 @@ function AnalyticsPage() {
       [],
       ["HOURLY PATIENT TRAFFIC"],
       ["Time", "Patients"],
-      ...hourlyVolume.map((item: any) => [
+      ...(analytics.hourly_volume ?? []).map((item: any) => [
         item.time,
         item.patients
       ]),
@@ -2654,26 +2617,6 @@ function AnalyticsPage() {
   return (
     <div className="min-h-screen py-8 px-4" style={{ backgroundColor: "#DDEEF8" }}>
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>
-              Analytics Dashboard
-            </h1>
-            <p className="text-sm" style={{ color: "#7FB0CB" }}>
-              Operational performance · Live data
-            </p>
-          </div>
-
-          <button
-            onClick={exportAnalytics}
-            disabled={!analytics}
-            className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ backgroundColor: "#3F8EAC" }}
-          >
-            <Download size={16} /> Export Report
-          </button>
-        </div>
-
         {loading && !analytics ? (
           <GlassCard className="p-8 mb-7">
             <div className="text-center" style={{ color: "#5a7a8a" }}>
@@ -2682,6 +2625,26 @@ function AnalyticsPage() {
           </GlassCard>
         ) : (
           <>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-xl font-black" style={{ color: "#283040" }}>
+                  Analytics Summary
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "#7FB0CB" }}>
+                  Live performance metrics from today's queue
+                </p>
+              </div>
+
+              <button
+                onClick={exportAnalytics}
+                disabled={!analytics}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: "#3F8EAC" }}
+              >
+                <Download size={16} /> Export Report
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-7">
               {metrics.map(m => (
                 <GlassCard key={m.label} className="p-5">
@@ -2715,38 +2678,31 @@ function AnalyticsPage() {
             <div className="grid lg:grid-cols-2 gap-6 mb-6">
               <GlassCard className="p-6">
                 <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
-                  Daily Patient Traffic
+                  Patients by Department
                 </h3>
 
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={hourlyVolume}>
-                    <defs>
-                      <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3F8EAC" stopOpacity={0.22} />
-                        <stop offset="95%" stopColor="#3F8EAC" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={patientsByDepartment}
+                    layout="vertical"
+                    margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                  >
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="rgba(168,205,229,0.35)"
                     />
 
                     <XAxis
-                      dataKey="time"
+                      type="number"
+                      allowDecimals={false}
                       tick={{ fontSize: 11, fill: "#7FB0CB" }}
                     />
 
                     <YAxis
-                      allowDecimals={false}
-                      domain={[0, "dataMax + 1"]}
-                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
-                      label={{
-                        value: "Patients",
-                        angle: -90,
-                        position: "insideLeft",
-                        style: { fill: "#7FB0CB", fontSize: 11 }
-                      }}
+                      type="category"
+                      dataKey="name"
+                      width={105}
+                      tick={{ fontSize: 10, fill: "#7FB0CB" }}
                     />
 
                     <Tooltip
@@ -2754,26 +2710,120 @@ function AnalyticsPage() {
                       formatter={(value: number) => [value, "Patients"]}
                     />
 
-                    <Area
-                      type="monotone"
+                    <Bar
                       dataKey="patients"
-                      stroke="#3F8EAC"
-                      strokeWidth={2.5}
-                      fill="url(#ag)"
+                      fill="#3F8EAC"
+                      radius={[0, 6, 6, 0]}
                       name="Patients"
-                      connectNulls
                     />
-                  </AreaChart>
+                  </BarChart>
                 </ResponsiveContainer>
               </GlassCard>
 
+              <GlassCard className="p-6">
+                <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                  Patients by Priority
+                </h3>
+
+                <ResponsiveContainer width="100%" height={300}>
+                  <RePieChart>
+                    <Pie
+                      data={patientsByPriority}
+                      dataKey="patients"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={70}
+                      outerRadius={105}
+                      paddingAngle={2}
+                      label={({ name, percent }) =>
+                        `${name} ${(percent * 100).toFixed(0)}%`
+                      }
+                      labelLine={false}
+                    >
+                      {patientsByPriority.map((_: any, index: number) => (
+                        <Cell
+                          key={`priority-${index}`}
+                          fill={
+                            [
+                              "#B74A42",
+                              "#D08A52",
+                              "#E1B95A",
+                              "#7FB0CB",
+                              "#3F8EAC"
+                            ][index % 5]
+                          }
+                        />
+                      ))}
+                    </Pie>
+
+                    <Tooltip
+                      contentStyle={ttStyle}
+                      formatter={(value: number) => [value, "Patients"]}
+                    />
+                  </RePieChart>
+                </ResponsiveContainer>
+              </GlassCard>
+            </div>
+
+            <GlassCard className="p-6 mb-6">
+              <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                Average Wait Time by Department
+              </h3>
+
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={averageWaitByDepartment}
+                  layout="vertical"
+                  margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="rgba(168,205,229,0.35)"
+                  />
+
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    label={{
+                      value: "Minutes",
+                      position: "insideBottom",
+                      offset: -2,
+                      style: { fill: "#7FB0CB", fontSize: 11 }
+                    }}
+                  />
+
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={105}
+                    tick={{ fontSize: 10, fill: "#7FB0CB" }}
+                  />
+
+                  <Tooltip
+                    contentStyle={ttStyle}
+                    formatter={(value: number) => [`${value} min`, "Average Wait"]}
+                  />
+
+                  <Bar
+                    dataKey="average_wait"
+                    fill="#B74A42"
+                    radius={[0, 6, 6, 0]}
+                    name="Average Wait"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </GlassCard>
+
+            <div className="grid lg:grid-cols-2 gap-6 mb-6">
               <GlassCard className="p-6">
                 <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
                   Weekly Patient Volume
                 </h3>
 
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={weeklyTrend}>
+                  <LineChart data={weeklyTrend}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="rgba(168,205,229,0.35)"
@@ -2801,13 +2851,16 @@ function AnalyticsPage() {
                       formatter={(value: number) => [value, "Patients"]}
                     />
 
-                    <Bar
+                    <Line
+                      type="monotone"
                       dataKey="patients"
-                      fill="#3F8EAC"
-                      radius={[6, 6, 0, 0]}
+                      stroke="#3F8EAC"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#3F8EAC", r: 4 }}
+                      activeDot={{ r: 6 }}
                       name="Patients"
                     />
-                  </BarChart>
+                  </LineChart>
                 </ResponsiveContainer>
               </GlassCard>
             </div>
@@ -2949,9 +3002,8 @@ function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void })
     { id: "landing", label: "Home", Icon: Home },
     { id: "reception", label: "Reception", Icon: LayoutDashboard },
     { id: "patient", label: "My Queue", Icon: QrCode },
-    { id: "eta", label: "ETA Engine", Icon: Brain },
+    { id: "eta", label: "Analytics & ETA", Icon: Brain },
     { id: "doctors", label: "Doctors", Icon: Stethoscope },
-    { id: "analytics", label: "Analytics", Icon: BarChart2 },
   ];
 
   return (
@@ -3047,9 +3099,13 @@ export default function App() {
         {page === "landing" && <LandingPage onNav={setPage} />}
         {page === "reception" && <ReceptionPage patients={patients} setPatients={setPatients} />}
         {page === "patient" && <PatientPage />}
-        {page === "eta" && <ETAPage />}
+        {page === "eta" && (
+          <>
+            <ETAPage />
+            <AnalyticsPage />
+          </>
+        )}
         {page === "doctors" && <DoctorsPage patients={patients} />}
-        {page === "analytics" && <AnalyticsPage />}
       </div>
     </div>
   );
