@@ -2140,128 +2140,447 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 // ─── Analytics Dashboard ──────────────────────────────────────────────────────
 
 function AnalyticsPage() {
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadAnalytics = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:5000/analytics");
+
+      if (!response.ok) {
+        throw new Error("Failed to load analytics");
+      }
+
+      const data = await response.json();
+      setAnalytics(data);
+    } catch (error) {
+      console.error("Failed to load analytics:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAnalytics();
+
+    const interval = setInterval(loadAnalytics, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const metrics = [
-    { label: "Total Patients Today", value: "44", change: "+12% vs yesterday", good: true, icon: Users, color: "#3F8EAC" },
-    { label: "Average Wait Time", value: "23 min", change: "−18% vs last week", good: true, icon: Clock, color: "#7FB0CB" },
-    { label: "Queue Efficiency", value: "87%", change: "+5 pts this week", good: true, icon: Zap, color: "#22c55e" },
-    { label: "Peak Hour", value: "11 AM", change: "Forecast: high load", good: false, icon: Activity, color: "#B74A42" },
-    { label: "Missed Appointments", value: "3", change: "−2 vs yesterday", good: true, icon: AlertTriangle, color: "#F59E0B" },
-    { label: "Emergency Cases", value: "2", change: "Active in queue", good: false, icon: Shield, color: "#B74A42" },
+    {
+      label: "Total Patients Today",
+      value: analytics ? analytics.total_patients_today : "—",
+      change: analytics
+        ? `${analytics.waiting_patients} currently waiting`
+        : "Loading...",
+      good: true,
+      icon: Users,
+      color: "#3F8EAC"
+    },
+    {
+      label: "Average Wait Time",
+      value: analytics ? `${analytics.average_wait_time} min` : "—",
+      change: "Based on completed consultations",
+      good: true,
+      icon: Clock,
+      color: "#7FB0CB"
+    },
+    {
+      label: "Queue Efficiency",
+      value: analytics ? `${analytics.queue_efficiency}%` : "—",
+      change: analytics
+        ? `${analytics.completed_patients_today} patients served`
+        : "Loading...",
+      good: true,
+      icon: Zap,
+      color: "#22c55e"
+    },
+    {
+      label: "Peak Hour",
+      value: analytics ? analytics.peak_hour : "—",
+      change: "Highest patient traffic",
+      good: false,
+      icon: Activity,
+      color: "#B74A42"
+    },
+    {
+      label: "Patients Served",
+      value: analytics ? analytics.completed_patients_today : "—",
+      change: "Completed consultations today",
+      good: true,
+      icon: Users,
+      color: "#22c55e"
+    },
+    {
+      label: "Emergency Cases",
+      value: analytics ? analytics.emergency_cases : "—",
+      change: analytics
+        ? `${analytics.waiting_patients} waiting · ${analytics.consulting_patients} consulting`
+        : "Loading...",
+      good: false,
+      icon: Shield,
+      color: "#B74A42"
+    }
   ];
+
+  const hourlyVolume = analytics?.hourly_volume ?? [];
+  const weeklyTrend = analytics?.weekly_trend ?? [];
+  const durationDist = analytics?.duration_distribution ?? [];
+
+  const exportAnalytics = () => {
+    if (!analytics) return;
+
+    const patientRecords = analytics.patient_records ?? [];
+
+    const rows = [
+      ["HOSPITAL QUEUE MANAGEMENT - DAILY REPORT"],
+      [],
+      ["SUMMARY"],
+      ["Metric", "Value"],
+      ["Report Date", new Date().toLocaleDateString("en-IN")],
+      ["Total Patients", analytics.total_patients_today],
+      ["Patients Served", analytics.completed_patients_today],
+      ["Patients Waiting", analytics.waiting_patients],
+      ["Patients Consulting", analytics.consulting_patients],
+      ["Average Wait Time (min)", analytics.average_wait_time],
+      ["Queue Efficiency (%)", analytics.queue_efficiency],
+      ["Peak Hour", analytics.peak_hour],
+      ["Emergency Cases", analytics.emergency_cases],
+      [],
+      ["PATIENT REGISTRATION & CONSULTATION DETAILS"],
+      [
+        "Token",
+        "Patient Name",
+        "Age",
+        "Condition",
+        "Department",
+        "Doctor",
+        "Triage Category",
+        "Emergency",
+        "Estimated Wait (min)",
+        "Actual Wait (min)",
+        "Status",
+        "Registered At",
+        "Consultation Started At"
+      ],
+      ...patientRecords.map((patient: any) => [
+        patient.token,
+        patient.patient_name,
+        patient.age,
+        patient.condition,
+        patient.department,
+        patient.doctor,
+        patient.triage_category,
+        patient.emergency,
+        patient.predicted_wait_time,
+        patient.actual_wait_time ?? "",
+        patient.status,
+        patient.registered_at,
+        patient.consulting_started_at
+      ]),
+      [],
+      ["HOURLY PATIENT TRAFFIC"],
+      ["Time", "Patients"],
+      ...hourlyVolume.map((item: any) => [
+        item.time,
+        item.patients
+      ]),
+      [],
+      ["WEEKLY PATIENT VOLUME"],
+      ["Day", "Patients", "Efficiency (%)"],
+      ...weeklyTrend.map((item: any) => [
+        item.day,
+        item.patients,
+        item.efficiency
+      ]),
+      [],
+      ["CONSULTATION DURATION DISTRIBUTION (HISTORICAL DATA)"],
+      ["Duration", "Percentage (%)"],
+      ...durationDist.map((item: any) => [
+        item.name,
+        item.value
+      ])
+    ];
+
+    const csv = rows
+      .map(row =>
+        row
+          .map(value => {
+            const cell = String(value ?? "");
+            return `"${cell.replace(/"/g, '""')}"`;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob(
+      ["\uFEFF" + csv],
+      { type: "text/csv;charset=utf-8;" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `hospital-queue-daily-report-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="min-h-screen py-8 px-4" style={{ backgroundColor: "#DDEEF8" }}>
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>Analytics Dashboard</h1>
-            <p className="text-sm" style={{ color: "#7FB0CB" }}>Executive performance metrics · Real-time</p>
+            <h1 className="text-3xl font-black mb-1" style={{ color: "#283040" }}>
+              Analytics Dashboard
+            </h1>
+            <p className="text-sm" style={{ color: "#7FB0CB" }}>
+              Operational performance · Live data
+            </p>
           </div>
-          <button className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:shadow-lg transition-all" style={{ backgroundColor: "#3F8EAC" }}>
+
+          <button
+            onClick={exportAnalytics}
+            disabled={!analytics}
+            className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: "#3F8EAC" }}
+          >
             <Download size={16} /> Export Report
           </button>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-7">
-          {metrics.map(m => (
-            <GlassCard key={m.label} className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium" style={{ color: "#5a7a8a" }}>{m.label}</p>
-                  <p className="text-3xl font-black mt-1" style={{ color: "#283040" }}>{m.value}</p>
-                  <p className="text-xs mt-1 font-medium" style={{ color: m.good ? "#22c55e" : "#B74A42" }}>{m.change}</p>
-                </div>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: m.color + "15" }}>
-                  <m.icon size={20} style={{ color: m.color }} />
-                </div>
-              </div>
-            </GlassCard>
-          ))}
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-6 mb-6">
-          {/* Daily Traffic */}
-          <GlassCard className="p-6">
-            <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Daily Patient Traffic</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={hourlyVolume}>
-                <defs>
-                  <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3F8EAC" stopOpacity={0.22} />
-                    <stop offset="95%" stopColor="#3F8EAC" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <Tooltip contentStyle={ttStyle} />
-                <Area type="monotone" dataKey="patients" stroke="#3F8EAC" strokeWidth={2.5} fill="url(#ag)" name="Patients" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </GlassCard>
-
-          {/* Weekly Trends */}
-          <GlassCard className="p-6">
-            <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Weekly Patient Volume</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={weeklyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <Tooltip contentStyle={ttStyle} />
-                <Bar dataKey="patients" fill="#3F8EAC" radius={[6, 6, 0, 0]} name="Patients" />
-              </BarChart>
-            </ResponsiveContainer>
-          </GlassCard>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Queue Performance */}
-          <GlassCard className="p-6 lg:col-span-2">
-            <h3 className="font-bold mb-5" style={{ color: "#283040" }}>Queue Performance &amp; Efficiency (Weekly)</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={weeklyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(168,205,229,0.35)" />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#7FB0CB" }} />
-                <Tooltip contentStyle={ttStyle} />
-                <Line type="monotone" dataKey="efficiency" stroke="#3F8EAC" strokeWidth={2.5} dot={{ fill: "#3F8EAC", r: 4 }} name="Efficiency %" />
-                <Line type="monotone" dataKey="patients" stroke="#B74A42" strokeWidth={2} strokeDasharray="4 2" dot={{ fill: "#B74A42", r: 3 }} name="Patients" />
-              </LineChart>
-            </ResponsiveContainer>
-          </GlassCard>
-
-          {/* Duration Distribution */}
-          <GlassCard className="p-6">
-            <h3 className="font-bold mb-4" style={{ color: "#283040" }}>Consultation Duration</h3>
-            <ResponsiveContainer width="100%" height={160}>
-              <RePieChart>
-                <Pie data={durationDist} cx="50%" cy="50%" outerRadius={68} dataKey="value" strokeWidth={0}>
-                  {durationDist.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip contentStyle={ttStyle} />
-              </RePieChart>
-            </ResponsiveContainer>
-            <div className="mt-3 space-y-2">
-              {durationDist.map(d => (
-                <div key={d.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-                    <span style={{ color: "#283040" }}>{d.name}</span>
-                  </div>
-                  <span className="font-bold" style={{ color: "#283040" }}>{d.value}%</span>
-                </div>
-              ))}
+        {loading && !analytics ? (
+          <GlassCard className="p-8 mb-7">
+            <div className="text-center" style={{ color: "#5a7a8a" }}>
+              Loading analytics...
             </div>
           </GlassCard>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-7">
+              {metrics.map(m => (
+                <GlassCard key={m.label} className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs font-medium" style={{ color: "#5a7a8a" }}>
+                        {m.label}
+                      </p>
+                      <p className="text-3xl font-black mt-1" style={{ color: "#283040" }}>
+                        {m.value}
+                      </p>
+                      <p
+                        className="text-xs mt-1 font-medium"
+                        style={{ color: m.good ? "#22c55e" : "#B74A42" }}
+                      >
+                        {m.change}
+                      </p>
+                    </div>
+
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: m.color + "15" }}
+                    >
+                      <m.icon size={20} style={{ color: m.color }} />
+                    </div>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-6 mb-6">
+              <GlassCard className="p-6">
+                <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                  Daily Patient Traffic
+                </h3>
+
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={hourlyVolume}>
+                    <defs>
+                      <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3F8EAC" stopOpacity={0.22} />
+                        <stop offset="95%" stopColor="#3F8EAC" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(168,205,229,0.35)"
+                    />
+
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <Tooltip contentStyle={ttStyle} />
+
+                    <Area
+                      type="monotone"
+                      dataKey="patients"
+                      stroke="#3F8EAC"
+                      strokeWidth={2.5}
+                      fill="url(#ag)"
+                      name="Patients"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </GlassCard>
+
+              <GlassCard className="p-6">
+                <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                  Weekly Patient Volume
+                </h3>
+
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={weeklyTrend}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(168,205,229,0.35)"
+                    />
+
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <Tooltip contentStyle={ttStyle} />
+
+                    <Bar
+                      dataKey="patients"
+                      fill="#3F8EAC"
+                      radius={[6, 6, 0, 0]}
+                      name="Patients"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </GlassCard>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-6">
+              <GlassCard className="p-6 lg:col-span-2">
+                <h3 className="font-bold mb-5" style={{ color: "#283040" }}>
+                  Queue Performance &amp; Efficiency (Weekly)
+                </h3>
+
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={weeklyTrend}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(168,205,229,0.35)"
+                    />
+
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#7FB0CB" }}
+                    />
+
+                    <Tooltip contentStyle={ttStyle} />
+
+                    <Line
+                      type="monotone"
+                      dataKey="efficiency"
+                      stroke="#3F8EAC"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#3F8EAC", r: 4 }}
+                      name="Efficiency %"
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="patients"
+                      stroke="#B74A42"
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      dot={{ fill: "#B74A42", r: 3 }}
+                      name="Patients"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </GlassCard>
+
+              <GlassCard className="p-6">
+                <h3 className="font-bold mb-4" style={{ color: "#283040" }}>
+                  Consultation Duration
+                </h3>
+
+                <ResponsiveContainer width="100%" height={160}>
+                  <RePieChart>
+                    <Pie
+                      data={durationDist}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={68}
+                      dataKey="value"
+                      strokeWidth={0}
+                    >
+                      {durationDist.map((e, i) => (
+                        <Cell
+                          key={i}
+                          fill={
+                            ["#3F8EAC", "#7FB0CB", "#A8CDE5", "#B74A42"][i % 4]
+                          }
+                        />
+                      ))}
+                    </Pie>
+
+                    <Tooltip contentStyle={ttStyle} />
+                  </RePieChart>
+                </ResponsiveContainer>
+
+                <div className="mt-3 space-y-2">
+                  {durationDist.map((d, i) => (
+                    <div
+                      key={d.name}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{
+                            backgroundColor:
+                              ["#3F8EAC", "#7FB0CB", "#A8CDE5", "#B74A42"][i % 4]
+                          }}
+                        />
+                        <span style={{ color: "#283040" }}>{d.name}</span>
+                      </div>
+
+                      <span
+                        className="font-bold"
+                        style={{ color: "#283040" }}
+                      >
+                        {d.value}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
-
-// ─── Navigation Bar ───────────────────────────────────────────────────────────
 
 function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void }) {
   const [open, setOpen] = useState(false);

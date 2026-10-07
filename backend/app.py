@@ -81,6 +81,272 @@ def predict():
     })
 
 
+
+@app.route("/analytics", methods=["GET"])
+def get_analytics():
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # Live hospital registrations start after the imported dataset records.
+        LIVE_PATIENT_ID_MIN = 5004
+
+        cursor.execute("""
+            SELECT
+                COUNT(*) AS total_patients,
+                SUM(status = 'completed') AS completed_patients,
+                SUM(status = 'waiting') AS waiting_patients,
+                SUM(status = 'consulting') AS consulting_patients,
+                SUM(is_emergency = 1) AS emergency_cases
+            FROM patients
+            WHERE DATE(registered_at) = CURDATE()
+              AND patient_id >= %s
+        """, (LIVE_PATIENT_ID_MIN,))
+        summary = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT AVG(
+                TIMESTAMPDIFF(
+                    SECOND,
+                    q.added_at,
+                    q.consulting_started_at
+                ) / 60
+            ) AS average_wait_time
+            FROM queue q
+            JOIN patients p
+                ON q.patient_id = p.patient_id
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND q.status = 'completed'
+              AND q.consulting_started_at IS NOT NULL
+        """, (LIVE_PATIENT_ID_MIN,))
+        wait_result = cursor.fetchone()
+
+        total_patients = int(summary["total_patients"] or 0)
+        completed_patients = int(summary["completed_patients"] or 0)
+
+        efficiency = (
+            round((completed_patients / total_patients) * 100)
+            if total_patients
+            else 0
+        )
+
+        cursor.execute("""
+            SELECT
+                HOUR(registered_at) AS hour,
+                COUNT(*) AS patients
+            FROM patients
+            WHERE DATE(registered_at) = CURDATE()
+              AND patient_id >= %s
+            GROUP BY HOUR(registered_at)
+            ORDER BY hour
+        """, (LIVE_PATIENT_ID_MIN,))
+        hourly_rows = cursor.fetchall()
+
+        hourly_counts = {
+            int(row["hour"]): int(row["patients"])
+            for row in hourly_rows
+        }
+
+        hourly_volume = [
+            {
+                "time": (
+                    f"{hour % 12 or 12}"
+                    f"{'AM' if hour < 12 else 'PM'}"
+                ),
+                "patients": hourly_counts.get(hour, 0)
+            }
+            for hour in range(6, 18)
+        ]
+
+        peak_hour = (
+            max(hourly_rows, key=lambda row: row["patients"])["hour"]
+            if hourly_rows else None
+        )
+
+        peak_hour_label = (
+            f"{peak_hour % 12 or 12}"
+            f"{' AM' if peak_hour < 12 else ' PM'}"
+            if peak_hour is not None
+            else "—"
+        )
+
+        cursor.execute("""
+            SELECT
+                DATE(registered_at) AS date,
+                COUNT(*) AS patients,
+                ROUND(
+                    SUM(status = 'completed') / COUNT(*) * 100
+                ) AS efficiency
+            FROM patients
+            WHERE registered_at >= CURDATE() - INTERVAL 6 DAY
+              AND patient_id >= %s
+            GROUP BY DATE(registered_at)
+            ORDER BY date
+        """, (LIVE_PATIENT_ID_MIN,))
+        weekly_rows = cursor.fetchall()
+
+        weekly_counts = {
+            row["date"].strftime("%a"): {
+                "patients": int(row["patients"]),
+                "efficiency": int(row["efficiency"] or 0)
+            }
+            for row in weekly_rows
+        }
+
+        weekly_trend = [
+            {
+                "day": day,
+                "patients": weekly_counts.get(
+                    day,
+                    {"patients": 0, "efficiency": 0}
+                )["patients"],
+                "efficiency": weekly_counts.get(
+                    day,
+                    {"patients": 0, "efficiency": 0}
+                )["efficiency"]
+            }
+            for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        ]
+
+        cursor.execute("""
+            SELECT
+                CASE
+                    WHEN ConsultationDurationTime < 10 THEN '< 10 min'
+                    WHEN ConsultationDurationTime < 15 THEN '10–15 min'
+                    WHEN ConsultationDurationTime < 20 THEN '15–20 min'
+                    ELSE '> 20 min'
+                END AS duration_range,
+                COUNT(*) AS count
+            FROM hospital_wait_data
+            GROUP BY duration_range
+            ORDER BY
+                CASE duration_range
+                    WHEN '< 10 min' THEN 1
+                    WHEN '10–15 min' THEN 2
+                    WHEN '15–20 min' THEN 3
+                    ELSE 4
+                END
+        """)
+        duration_rows = cursor.fetchall()
+
+        duration_total = sum(
+            int(row["count"]) for row in duration_rows
+        )
+
+        duration_distribution = [
+            {
+                "name": row["duration_range"],
+                "value": round(
+                    int(row["count"]) / duration_total * 100,
+                    1
+                ) if duration_total else 0
+            }
+            for row in duration_rows
+        ]
+
+        cursor.execute("""
+            SELECT
+                p.patient_id,
+                p.token,
+                p.patient_name,
+                p.age,
+                p.gender,
+                p.phone,
+                p.condition_name,
+                p.department,
+                d.doctor_name,
+                p.triage_category,
+                p.is_emergency,
+                p.predicted_wait_time,
+                p.status,
+                p.registered_at,
+                q.added_at,
+                q.consulting_started_at,
+                q.status AS queue_status
+            FROM patients p
+            LEFT JOIN doctors d
+                ON p.doctor_id = d.doctor_id
+            LEFT JOIN queue q
+                ON p.patient_id = q.patient_id
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+            ORDER BY p.registered_at ASC, p.patient_id ASC
+        """, (LIVE_PATIENT_ID_MIN,))
+
+        patient_rows = cursor.fetchall()
+
+        patient_records = [
+            {
+                "token": row["token"],
+                "patient_name": row["patient_name"],
+                "age": row["age"],
+                "gender": row["gender"] or "",
+                "phone": row["phone"] or "",
+                "condition": row["condition_name"] or "",
+                "department": row["department"] or "",
+                "doctor": row["doctor_name"] or "Not assigned",
+                "triage_category": row["triage_category"] or "",
+                "emergency": "Yes" if row["is_emergency"] else "No",
+                "predicted_wait_time": int(row["predicted_wait_time"] or 0),
+                "actual_wait_time": (
+                    round(
+                        (
+                            row["consulting_started_at"] - row["added_at"]
+                        ).total_seconds() / 60
+                    )
+                    if row["status"] == "completed"
+                    and row["consulting_started_at"]
+                    and row["added_at"]
+                    else None
+                ),
+                "status": row["status"] or "",
+                "registered_at": (
+                    row["registered_at"].strftime("%Y-%m-%d %I:%M %p")
+                    if row["registered_at"] else ""
+                ),
+                "consulting_started_at": (
+                    row["consulting_started_at"].strftime("%Y-%m-%d %I:%M %p")
+                    if row["consulting_started_at"] else ""
+                )
+            }
+            for row in patient_rows
+        ]
+
+        return jsonify({
+            "total_patients_today": total_patients,
+            "completed_patients_today": completed_patients,
+            "waiting_patients": int(summary["waiting_patients"] or 0),
+            "consulting_patients": int(summary["consulting_patients"] or 0),
+            "average_wait_time": round(
+                float(wait_result["average_wait_time"] or 0)
+            ),
+            "queue_efficiency": efficiency,
+            "peak_hour": peak_hour_label,
+            "emergency_cases": int(summary["emergency_cases"] or 0),
+            "hourly_volume": hourly_volume,
+            "weekly_trend": weekly_trend,
+            "duration_distribution": duration_distribution,
+            "patient_records": patient_records
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to load analytics",
+            "details": str(e)
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+
 @app.route("/doctors", methods=["GET"])
 def get_doctors():
 
