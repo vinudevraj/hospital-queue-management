@@ -35,6 +35,15 @@ interface Patient {
   registeredAt: string;
 }
 
+type DbDoctor = {
+  doctor_id: string;
+  doctor_name: string;
+  department: string;
+  specialization: string;
+  status: string;
+  waiting_patients: number;
+};
+
 // ─── Demo Data ────────────────────────────────────────────────────────────────
 const INITIAL_PATIENTS: Patient[] = [
   { token: "T001", name: "Priya Sharma", doctor: "Dr. Amit Mehta", status: "consulting", eta: "Now", isEmergency: false, waitMinutes: 0, condition: "Fever & Cold", phone: "+91 98765 43210", age: 34, registeredAt: "09:15 AM" },
@@ -405,6 +414,12 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
             <a href="#how" className="hover:text-[#3F8EAC] transition-colors">
               How It Works
             </a>
+            <button
+              onClick={() => onNav("patient")}
+              className="hover:text-[#3F8EAC] transition-colors"
+            >
+              Patient Registration
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -465,7 +480,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
                 className="px-6 py-3.5 rounded-xl font-bold border-2 hover:-translate-y-0.5 transition-all"
                 style={{ borderColor: "#3F8EAC", color: "#3F8EAC" }}
               >
-                Patient Prediction
+                Register as Patient
               </button>
             </div>
 
@@ -1556,6 +1571,221 @@ function PatientPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [showRegistration, setShowRegistration] = useState(false);
+  const [registrationLoading, setRegistrationLoading] = useState(false);
+  const [registrationError, setRegistrationError] = useState("");
+  const [registrationSuccess, setRegistrationSuccess] = useState("");
+
+  const [doctors, setDoctors] = useState<DbDoctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+
+  const [registrationForm, setRegistrationForm] = useState({
+    name: "",
+    age: "",
+    phone: "",
+    department: "",
+    doctor: "",
+    condition: "",
+  });
+
+  const departments = [
+    "Orthopedics",
+    "Cardiology",
+    "General Surgery",
+    "Emergency",
+    "Radiology",
+    "Obstetrics",
+    "Neurology",
+    "Oncology",
+    "Pediatrics",
+    "Internal Medicine",
+  ];
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:5000/doctors")
+      .then(res => {
+        if (!res.ok) {
+          throw new Error("Failed to load doctors");
+        }
+        return res.json();
+      })
+      .then(data => {
+        setDoctors(data);
+      })
+      .catch(err => {
+        console.error("Failed to load doctors:", err);
+      })
+      .finally(() => {
+        setDoctorsLoading(false);
+      });
+  }, []);
+
+  const availableDoctors = doctors.filter(
+    doctor =>
+      doctor.department === registrationForm.department &&
+      doctor.status !== "Unavailable"
+  );
+
+  const handleDepartmentChange = (department: string) => {
+    const firstDoctor = doctors.find(
+      doctor =>
+        doctor.department === department &&
+        doctor.status !== "Unavailable"
+    );
+
+    setRegistrationForm(form => ({
+      ...form,
+      department,
+      doctor: firstDoctor?.doctor_id || "",
+    }));
+  };
+
+  const registerOnline = async () => {
+    setRegistrationError("");
+    setRegistrationSuccess("");
+
+    const name = registrationForm.name.trim();
+    const age = Number(registrationForm.age);
+    const phone = registrationForm.phone.trim();
+    const department = registrationForm.department;
+    const doctorId = registrationForm.doctor;
+    const condition = registrationForm.condition.trim();
+
+    if (!name || !age || !phone || !department || !doctorId || !condition) {
+      setRegistrationError("Please complete all required fields.");
+      return;
+    }
+
+    if (age < 0 || age > 120) {
+      setRegistrationError("Please enter a valid age.");
+      return;
+    }
+
+    if (!/^\d{10}$/.test(phone.replace(/\D/g, ""))) {
+      setRegistrationError("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
+    const now = new Date();
+
+    const ageGroup = getAgeGroup(age);
+
+    const dayOfWeek = now.toLocaleDateString("en-US", {
+      weekday: "long",
+    });
+
+    const isWeekend =
+      now.getDay() === 0 || now.getDay() === 6 ? 1 : 0;
+
+    setRegistrationLoading(true);
+
+    try {
+      const predictionResponse = await fetch(
+        "http://127.0.0.1:5000/predict",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            AgeGroup: ageGroup,
+            Department: department,
+            AppointmentType: "New Patient",
+            ArrivalMethod: "Walk-in",
+            TriageCategory: "Non-urgent",
+            FacilityOccupancyRate: 0.30,
+            ProvidersOnShift: 1,
+            NursesOnShift: 2,
+            StaffToPatientRatio: 0.5,
+            ArrivalHour: now.getHours(),
+            DayOfWeek: dayOfWeek,
+            IsWeekend: isWeekend,
+            Month: now.getMonth() + 1,
+          }),
+        }
+      );
+
+      if (!predictionResponse.ok) {
+        throw new Error("Unable to estimate waiting time.");
+      }
+
+      const predictionData = await predictionResponse.json();
+
+      const predictedWaitTime = Math.max(
+        0,
+        Math.round(
+          Number(predictionData.predicted_wait_time_minutes)
+        )
+      );
+
+      const patientResponse = await fetch(
+        "http://127.0.0.1:5000/patients",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patient_name: name,
+            age,
+            phone: phone.replace(/\D/g, ""),
+            condition_name: condition,
+            doctor_id: doctorId,
+            department,
+            triage_category: "Non-urgent",
+            predicted_wait_time: predictedWaitTime,
+            is_emergency: false,
+            appointment_date: now
+              .toISOString()
+              .slice(0, 19)
+              .replace("T", " "),
+          }),
+        }
+      );
+
+      const patientData = await patientResponse.json();
+
+      if (!patientResponse.ok) {
+        throw new Error(
+          patientData.error || "Patient registration failed."
+        );
+      }
+
+      setToken(patientData.token);
+      setRegistrationSuccess(
+        `Registration successful. Your token is ${patientData.token}.`
+      );
+
+      setRegistrationForm({
+        name: "",
+        age: "",
+        phone: "",
+        department: "",
+        doctor: "",
+        condition: "",
+      });
+
+      setShowRegistration(false);
+
+      const lookupResponse = await fetch(
+        `http://127.0.0.1:5000/patients/token/${encodeURIComponent(
+          patientData.token
+        )}`
+      );
+
+      if (lookupResponse.ok) {
+        const lookupData = await lookupResponse.json();
+        setPatient(lookupData);
+      }
+    } catch (err: any) {
+      setRegistrationError(
+        err.message || "Unable to complete online registration."
+      );
+    } finally {
+      setRegistrationLoading(false);
+    }
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -1688,17 +1918,295 @@ function PatientPage() {
                 className="text-3xl font-bold"
                 style={{ color: "#173B4D" }}
               >
-                Check Your Waiting Time
+                Patient Portal
               </h1>
 
               <p
                 className="mt-1"
                 style={{ color: "#5a7a8a" }}
               >
-                Enter your token number to view your hospital queue details.
+                Register online for a hospital visit or track your existing queue token.
               </p>
             </div>
           </div>
+        </div>
+
+        <div
+          className="rounded-2xl p-6 mb-6 border"
+          style={{
+            backgroundColor: "white",
+            borderColor: "#D9EAF0",
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <UserPlus
+                  className="w-5 h-5"
+                  style={{ color: "#3F8EAC" }}
+                />
+                <h2
+                  className="text-lg font-bold"
+                  style={{ color: "#173B4D" }}
+                >
+                  Register for a Visit
+                </h2>
+              </div>
+              <p className="text-sm" style={{ color: "#7A929E" }}>
+                Complete your details to receive a queue token online.
+              </p>
+            </div>
+
+            <span
+              className="hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-semibold"
+              style={{
+                backgroundColor: "#E8F4F8",
+                color: "#3F8EAC",
+              }}
+            >
+              Online Registration
+            </span>
+          </div>
+
+          {registrationSuccess && (
+            <div
+              className="mb-5 p-4 rounded-xl border"
+              style={{
+                backgroundColor: "#EFFAF3",
+                borderColor: "#B9E4C7",
+                color: "#287A43",
+              }}
+            >
+              <div className="font-bold">Registration Complete</div>
+              <div className="text-sm mt-1">
+                {registrationSuccess} Your queue details are shown below.
+              </div>
+            </div>
+          )}
+
+          {registrationError && (
+            <div
+              className="mb-5 p-4 rounded-xl"
+              style={{
+                backgroundColor: "#FDECEC",
+                color: "#A33A35",
+              }}
+            >
+              {registrationError}
+            </div>
+          )}
+
+          {!showRegistration ? (
+            <button
+              onClick={() => {
+                setRegistrationError("");
+                setRegistrationSuccess("");
+                setShowRegistration(true);
+              }}
+              className="px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90"
+              style={{ backgroundColor: "#3F8EAC" }}
+            >
+              {registrationSuccess ? "Register Another Patient" : "Register Online"}
+            </button>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Full Name *
+                  </label>
+                  <input
+                    value={registrationForm.name}
+                    onChange={e =>
+                      setRegistrationForm(form => ({
+                        ...form,
+                        name: e.target.value,
+                      }))
+                    }
+                    placeholder="Enter your full name"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Age *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={registrationForm.age}
+                    onChange={e =>
+                      setRegistrationForm(form => ({
+                        ...form,
+                        age: e.target.value,
+                      }))
+                    }
+                    placeholder="Enter your age"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={registrationForm.phone}
+                    onChange={e =>
+                      setRegistrationForm(form => ({
+                        ...form,
+                        phone: e.target.value.replace(/\D/g, "").slice(0, 10),
+                      }))
+                    }
+                    placeholder="10-digit mobile number"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Department *
+                  </label>
+                  <select
+                    value={registrationForm.department}
+                    onChange={e => handleDepartmentChange(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border outline-none bg-white"
+                    style={{ borderColor: "#C9DEE6" }}
+                  >
+                    <option value="">Select department</option>
+                    {departments.map(department => (
+                      <option key={department} value={department}>
+                        {department}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Doctor *
+                  </label>
+                  <select
+                    value={registrationForm.doctor}
+                    onChange={e =>
+                      setRegistrationForm(form => ({
+                        ...form,
+                        doctor: e.target.value,
+                      }))
+                    }
+                    disabled={
+                      !registrationForm.department ||
+                      doctorsLoading ||
+                      availableDoctors.length === 0
+                    }
+                    className="w-full px-4 py-3 rounded-xl border outline-none bg-white disabled:bg-gray-50"
+                    style={{ borderColor: "#C9DEE6" }}
+                  >
+                    <option value="">
+                      {doctorsLoading
+                        ? "Loading doctors..."
+                        : !registrationForm.department
+                        ? "Select department first"
+                        : availableDoctors.length === 0
+                        ? "No doctors available"
+                        : "Select doctor"}
+                    </option>
+                    {availableDoctors.map(doctor => (
+                      <option key={doctor.doctor_id} value={doctor.doctor_id}>
+                        {doctor.doctor_name} · {doctor.specialization}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: "#365766" }}
+                  >
+                    Reason for Visit *
+                  </label>
+                  <textarea
+                    value={registrationForm.condition}
+                    onChange={e =>
+                      setRegistrationForm(form => ({
+                        ...form,
+                        condition: e.target.value,
+                      }))
+                    }
+                    rows={3}
+                    placeholder="Briefly describe the reason for your visit"
+                    className="w-full px-4 py-3 rounded-xl border outline-none resize-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+              </div>
+
+              <div
+                className="p-4 rounded-xl text-sm"
+                style={{
+                  backgroundColor: "#F7FBFC",
+                  color: "#5A7A8A",
+                }}
+              >
+                <span className="font-semibold" style={{ color: "#365766" }}>
+                  Note:
+                </span>{" "}
+                Triage priority is assessed by hospital staff. Online
+                registration starts with the standard non-urgent category.
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={registerOnline}
+                  disabled={registrationLoading}
+                  className="px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: "#3F8EAC" }}
+                >
+                  {registrationLoading
+                    ? "Registering..."
+                    : "Register & Get Token"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowRegistration(false);
+                    setRegistrationError("");
+                  }}
+                  disabled={registrationLoading}
+                  className="px-6 py-3 rounded-xl font-bold border transition-all hover:bg-[#F7FBFC] disabled:opacity-60"
+                  style={{
+                    borderColor: "#C9DEE6",
+                    color: "#365766",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div
@@ -2112,7 +2620,7 @@ function ETAPage() {
 
   const predictedWait =
     waitingPatients.length > 0
-      ? Number(waitingPatients[0].live_eta_minutes ?? 0)
+      ? Number(waitingPatients[0].predicted_wait_time ?? 0)
       : 0;
 
   const availableDoctors = doctorsData.filter(
@@ -2393,15 +2901,6 @@ function ETAPage() {
 // ─── Multi-Doctor Queue View ──────────────────────────────────────────────────
 
 function DoctorsPage({ patients }: { patients: Patient[] }) {
-  type DbDoctor = {
-    doctor_id: string;
-    doctor_name: string;
-    department: string;
-    specialization: string;
-    status: string;
-    waiting_patients: number;
-  };
-
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

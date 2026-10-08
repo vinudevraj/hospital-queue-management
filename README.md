@@ -1,6 +1,6 @@
-# Turnwell – AI Queue Management for Clinics
+# Hospital Queue Management – AI Queue Management for Clinics
 
-Turnwell is an AI-powered hospital and clinic queue management platform designed to reduce patient uncertainty, optimize doctor workloads, and improve overall healthcare experience through real-time queue visibility and intelligent ETA prediction.
+Hospital Queue Management is an AI-powered hospital and clinic queue management platform designed to reduce patient uncertainty, optimize doctor workloads, and improve overall healthcare experience through real-time queue visibility and intelligent ETA prediction.
 
 ## Problem
 
@@ -16,7 +16,7 @@ This leads to:
 
 ## Solution
 
-Turnwell provides a centralized dashboard that combines live queue tracking, AI-powered wait-time prediction, doctor performance monitoring, and healthcare analytics.
+Hospital Queue Management provides a centralized dashboard that combines live queue tracking, AI-powered wait-time prediction, doctor performance monitoring, and healthcare analytics.
 
 Patients receive accurate waiting estimates, while clinics gain actionable insights to improve operational efficiency.
 
@@ -102,5 +102,5 @@ Built as a hackathon project to reimagine patient waiting experiences through AI
 
 ---
 
-**Turnwell**
+**Hospital Queue Management**
 *Predict. Inform. Optimize.*
