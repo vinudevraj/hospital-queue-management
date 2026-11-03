@@ -1,14 +1,26 @@
 from datetime import datetime, timedelta
 import secrets
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
+from dotenv import load_dotenv
+from functools import wraps
+from werkzeug.security import check_password_hash
 import pandas as pd
 import joblib
 import os
 import mysql.connector
 
 
+load_dotenv()
+
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError("FLASK_SECRET_KEY is missing from .env")
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 CORS(app)
 
 
@@ -23,15 +35,88 @@ model = joblib.load(MODEL_PATH)
 
 def get_db_connection():
     connection = mysql.connector.connect(
-        host="127.0.0.1",
-        user="hospital_app",
-        password="HospitalApp@2026",
-        database="hospital_queue"
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME")
     )
     cursor = connection.cursor()
     cursor.execute("SET time_zone = '+05:30'")
     cursor.close()
     return connection
+
+
+def staff_required(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not session.get("staff_id"):
+            return jsonify({"error": "Staff login required"}), 401
+        return func(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/auth/login", methods=["POST"])
+def staff_login():
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT * FROM staff WHERE username = %s",
+            (username,)
+        )
+        staff = cursor.fetchone()
+    finally:
+        cursor.close()
+        connection.close()
+
+    if not staff or not staff["is_active"] or not check_password_hash(
+        staff["password_hash"], password
+    ):
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    session.clear()
+    session.permanent = True
+    session["staff_id"] = staff["staff_id"]
+    session["username"] = staff["username"]
+    session["full_name"] = staff["full_name"]
+    session["role"] = staff["role"]
+
+    return jsonify({
+        "message": "Login successful",
+        "user": {
+            "username": staff["username"],
+            "full_name": staff["full_name"],
+            "role": staff["role"]
+        }
+    })
+
+
+@app.route("/auth/logout", methods=["POST"])
+def staff_logout():
+    session.clear()
+    return jsonify({"message": "Logged out successfully"})
+
+
+@app.route("/auth/me", methods=["GET"])
+def staff_session():
+    if not session.get("staff_id"):
+        return jsonify({"authenticated": False}), 401
+
+    return jsonify({
+        "authenticated": True,
+        "user": {
+            "username": session.get("username"),
+            "full_name": session.get("full_name"),
+            "role": session.get("role")
+        }
+    })
 
 
 @app.route("/", methods=["GET"])
@@ -89,6 +174,7 @@ def predict():
 
 
 @app.route("/analytics", methods=["GET"])
+@staff_required
 def get_analytics():
 
     connection = None
@@ -473,6 +559,7 @@ def get_analytics():
 
 
 @app.route("/doctors/<doctor_id>/leave", methods=["POST"])
+@staff_required
 def update_doctor_leave(doctor_id):
 
     connection = None
@@ -1457,6 +1544,7 @@ def create_appointment():
 
 
 @app.route("/appointments", methods=["GET"])
+@staff_required
 def get_appointments():
     connection = None
     cursor = None
@@ -1552,6 +1640,7 @@ def get_appointments():
 
 
 @app.route("/appointments/<int:appointment_id>/check-in", methods=["POST"])
+@staff_required
 def check_in_appointment(appointment_id):
     connection = None
     cursor = None
@@ -1583,7 +1672,7 @@ def check_in_appointment(appointment_id):
 
         now = datetime.now()
 
-        if appointment["appointment_datetime"].date() != now.date():
+        if appointment["appointment_datetime"].date() < now.date():
             connection.rollback()
             return jsonify({
                 "error": "Check-in is allowed only on the appointment date.",
@@ -1788,6 +1877,7 @@ def check_in_appointment(appointment_id):
 
 
 @app.route("/queue", methods=["GET"])
+@staff_required
 def get_queue():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -1964,6 +2054,7 @@ def get_queue():
 
 
 @app.route("/queue/call-next", methods=["POST"])
+@staff_required
 def call_next_patient():
     connection = None
     cursor = None
@@ -2051,6 +2142,7 @@ def call_next_patient():
 
 
 @app.route("/queue/complete/<int:patient_id>", methods=["POST"])
+@staff_required
 def complete_patient(patient_id):
     connection = None
     cursor = None
@@ -2118,6 +2210,7 @@ def complete_patient(patient_id):
 
 
 @app.route("/queue/skip/<int:patient_id>", methods=["POST"])
+@staff_required
 def skip_patient(patient_id):
     connection = None
     cursor = None
@@ -2207,6 +2300,7 @@ def skip_patient(patient_id):
 
 
 @app.route("/queue/emergency/<int:patient_id>", methods=["POST"])
+@staff_required
 def toggle_emergency(patient_id):
     connection = None
     cursor = None
