@@ -795,6 +795,44 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             (q: any) => q.token === dbPatient.token
           );
 
+          const liveEtaStorageKey = `hospitalQueueLiveEta:${dbPatient.token}`;
+          let persistedLiveEtaSeconds: number | undefined;
+
+          if (
+            dbPatient.status === "waiting" &&
+            livePatient?.live_eta_seconds != null
+          ) {
+            const serverEtaSeconds = Math.max(
+              0,
+              Number(livePatient.live_eta_seconds)
+            );
+
+            const storedDeadline = Number(
+              localStorage.getItem(liveEtaStorageKey)
+            );
+
+            const hasValidDeadline =
+              Number.isFinite(storedDeadline) && storedDeadline > 0;
+
+            const deadline = hasValidDeadline
+              ? storedDeadline
+              : Date.now() + serverEtaSeconds * 1000;
+
+            if (!hasValidDeadline) {
+              localStorage.setItem(
+                liveEtaStorageKey,
+                String(deadline)
+              );
+            }
+
+            persistedLiveEtaSeconds = Math.max(
+              0,
+              Math.ceil((deadline - Date.now()) / 1000)
+            );
+          } else if (dbPatient.status !== "waiting") {
+            localStorage.removeItem(liveEtaStorageKey);
+          }
+
           return {
             patient_id: dbPatient.patient_id,
             token: dbPatient.token,
@@ -811,8 +849,12 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                 : `${dbPatient.predicted_wait_time ?? 0} min`,
             isEmergency: Boolean(dbPatient.is_emergency),
             waitMinutes: dbPatient.predicted_wait_time ?? 0,
-            liveEta: livePatient?.live_eta_minutes,
-            liveEtaSeconds: livePatient?.live_eta_seconds,
+            liveEta:
+              persistedLiveEtaSeconds !== undefined
+                ? Math.ceil(persistedLiveEtaSeconds / 60)
+                : livePatient?.live_eta_minutes,
+            liveEtaSeconds:
+              persistedLiveEtaSeconds ?? livePatient?.live_eta_seconds,
             actualWaitSeconds:
               dbPatient.actual_wait_seconds == null
                 ? undefined
@@ -4649,7 +4691,7 @@ function StaffLoginPage({ requiredRole, onLogin, onBack }: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: isAdmin ? "admin" : username, password }),
       });
 
       const data = await response.json();
@@ -4711,10 +4753,15 @@ function StaffLoginPage({ requiredRole, onLogin, onBack }: {
         </p>
 
         <label className="block text-sm font-semibold mb-2">Username</label>
-        <input value={username} onChange={e => setUsername(e.target.value)}
-          autoComplete="username" required
-          className="w-full border rounded-xl px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-[#3F8EAC]"
-          placeholder="Enter username" />
+        {isAdmin ? (
+          <input value="admin" readOnly
+            className="w-full border rounded-xl px-4 py-3 mb-5 outline-none bg-gray-100" />
+        ) : (
+          <input value={username} onChange={e => setUsername(e.target.value)}
+            autoComplete="username" required
+            className="w-full border rounded-xl px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-[#3F8EAC]"
+            placeholder="Enter username" />
+        )}
 
         <label className="block text-sm font-semibold mb-2">Password</label>
         <input type="password" value={password}
@@ -4745,6 +4792,14 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [staffRole, setStaffRole] = useState<"admin" | "receptionist" | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "smooth",
+    });
+  }, [page]);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
