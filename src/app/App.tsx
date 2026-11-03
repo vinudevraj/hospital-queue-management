@@ -3043,8 +3043,21 @@ function PatientPage() {
                   className="mt-4 text-sm font-semibold"
                   style={{ color: "#5A7A8A" }}
                 >
-                  Estimated wait: {patient.status === "consulting" ? "Consulting now" : `${liveWait} min`}
+                  ML-predicted wait:{" "}
+                  {patient.status === "consulting"
+                    ? "Consulting now"
+                    : `${Number(patient.predicted_wait_time ?? 0)} min`}
                 </p>
+
+                {patient.status === "waiting" &&
+                  patient.live_eta_minutes != null && (
+                    <p
+                      className="text-sm mt-2 font-medium"
+                      style={{ color: "#7A929E" }}
+                    >
+                      Live queue estimate: {liveWait} min
+                    </p>
+                  )}
 
                 {patient.status === "consulting" &&
                   patient.consultation_remaining_minutes != null && (
