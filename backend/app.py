@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 from functools import wraps
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 import pandas as pd
 import joblib
 import os
@@ -129,6 +129,57 @@ def staff_session():
             "role": session.get("role")
         }
     })
+
+
+@app.route("/auth/change-password", methods=["POST"])
+@staff_required
+def change_staff_password():
+    data = request.get_json(silent=True) or {}
+    current_password = str(data.get("current_password", ""))
+    new_password = str(data.get("new_password", ""))
+
+    if not current_password or not new_password:
+        return jsonify({"error": "Both passwords are required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+
+    if current_password == new_password:
+        return jsonify({"error": "New password must be different from current password"}), 400
+
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            "SELECT password_hash FROM staff WHERE staff_id = %s AND is_active = 1",
+            (session["staff_id"],)
+        )
+        staff = cursor.fetchone()
+
+        if not staff or not check_password_hash(
+            staff["password_hash"], current_password
+        ):
+            return jsonify({"error": "Current password is incorrect"}), 401
+
+        new_hash = generate_password_hash(new_password)
+
+        cursor.execute(
+            "UPDATE staff SET password_hash = %s WHERE staff_id = %s",
+            (new_hash, session["staff_id"])
+        )
+        connection.commit()
+
+        return jsonify({"message": "Password changed successfully"})
+
+    except Exception:
+        connection.rollback()
+        app.logger.exception("Password change failed")
+        return jsonify({"error": "Unable to change password"}), 500
+
+    finally:
+        cursor.close()
+        connection.close()
 
 
 @app.route("/", methods=["GET"])
