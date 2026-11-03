@@ -2447,7 +2447,6 @@ def skip_patient(patient_id):
 
         cursor.execute("""
             SELECT
-                p.department,
                 COALESCE(
                     MAX(q.added_at),
                     NOW()

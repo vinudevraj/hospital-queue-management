@@ -1178,8 +1178,12 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         const data = await response.json();
 
         if (!response.ok) {
+          console.error("Skip API database error:", data);
+
           throw new Error(
-            data.error || "Unable to skip patient."
+            data.message
+              ? `${data.error || "Skip failed"}: ${data.message}`
+              : data.error || "Unable to skip patient."
           );
         }
 
@@ -1215,8 +1219,12 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         const data = await response.json();
 
         if (!response.ok) {
+          console.error("Emergency API database error:", data);
+
           throw new Error(
-            data.error || "Unable to update priority."
+            data.message
+              ? `${data.error || "Emergency update failed"}: ${data.message}`
+              : data.error || "Unable to update priority."
           );
         }
 
