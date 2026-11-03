@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Page = "landing" | "login" | "reception" | "patient" | "eta" | "doctors" | "analytics";
+type Page = "landing" | "login" | "admin-login" | "receptionist-login" | "reception" | "patient" | "eta" | "doctors" | "analytics";
 type PatientStatus = "consulting" | "waiting" | "completed";
 
 interface Patient {
@@ -1275,7 +1275,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             age: age,
             phone: form.phone,
             condition_name: form.condition || "General",
-            doctor_id: selectedDoctor.doctor_id,
+            doctor_id: form.doctor,
             department: form.department,
             triage_category: form.triageCategory,
             predicted_wait_time: predictedWaitTime,
@@ -2991,15 +2991,19 @@ function PatientPage() {
                   className="mt-4 text-sm font-semibold"
                   style={{ color: "#5A7A8A" }}
                 >
-                  Estimated wait: {Math.round(Number(patient.predicted_wait_time ?? 0))} min
+                  Estimated wait: {patient.status === "consulting" ? "Consulting now" : `${liveWait} min`}
                 </p>
 
-                <p
-                  className="text-sm mt-2"
-                  style={{ color: "#7A929E" }}
-                >
-                  
-                </p>
+                {patient.status === "consulting" &&
+                  patient.consultation_remaining_minutes != null && (
+                    <p
+                      className="text-sm mt-2 font-medium"
+                      style={{ color: "#7A929E" }}
+                    >
+                      Estimated consultation remaining:{" "}
+                      {patient.consultation_remaining_minutes} min
+                    </p>
+                  )}
                 </div>
               )}
             </>
@@ -3754,6 +3758,12 @@ function AnalyticsPage() {
   const patientsByPriority = analytics?.patients_by_priority ?? [];
   const averageWaitByDepartment = analytics?.average_wait_by_department ?? [];
 
+  const intelligence = analytics?.queue_intelligence ?? {};
+  const modelPerformance = intelligence.model_performance ?? {};
+  const queuePrediction = intelligence.queue_prediction_performance ?? {};
+  const doctorWorkload = intelligence.doctor_workload ?? [];
+  const potentialNoShows = intelligence.potential_no_shows ?? [];
+
   const durationRanges = [
     "< 10 min",
     "10–15 min",
@@ -4252,6 +4262,223 @@ function AnalyticsPage() {
                 </div>
               </GlassCard>
             </div>
+            <section className="mt-8">
+              <div className="mb-5">
+                <h2 className="text-xl font-black" style={{ color: "#283040" }}>
+                  AI Queue Intelligence
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "#7FB0CB" }}>
+                  Model evaluation, live workload, priority review and appointment alerts
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <GlassCard className="p-5">
+                  <p className="text-xs font-semibold" style={{ color: "#5a7a8a" }}>
+                    Prediction Model
+                  </p>
+                  <p className="text-lg font-black mt-2" style={{ color: "#283040" }}>
+                    {modelPerformance.model_name ?? "Linear Regression"}
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "#B74A42" }}>
+                    {modelPerformance.reliability_label ?? "Model evaluation"}
+                  </p>
+                </GlassCard>
+
+                <GlassCard className="p-5">
+                  <p className="text-xs font-semibold" style={{ color: "#5a7a8a" }}>
+                    Model Test MAE
+                  </p>
+                  <p className="text-3xl font-black mt-2" style={{ color: "#283040" }}>
+                    {modelPerformance.mae_minutes ?? "—"} min
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "#7FB0CB" }}>
+                    Average absolute prediction error
+                  </p>
+                </GlassCard>
+
+                <GlassCard className="p-5">
+                  <p className="text-xs font-semibold" style={{ color: "#5a7a8a" }}>
+                    Model Test RMSE
+                  </p>
+                  <p className="text-3xl font-black mt-2" style={{ color: "#283040" }}>
+                    {modelPerformance.rmse_minutes ?? "—"} min
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "#7FB0CB" }}>
+                    Root mean squared error
+                  </p>
+                </GlassCard>
+
+                <GlassCard className="p-5">
+                  <p className="text-xs font-semibold" style={{ color: "#5a7a8a" }}>
+                    Model R² Score
+                  </p>
+                  <p className="text-3xl font-black mt-2" style={{ color: "#283040" }}>
+                    {modelPerformance.r2_score ?? "—"}
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "#7FB0CB" }}>
+                    Previously evaluated test score
+                  </p>
+                </GlassCard>
+              </div>
+
+              <GlassCard className="p-6 mb-6">
+                <h3 className="font-bold mb-4" style={{ color: "#283040" }}>
+                  Live Queue Prediction Performance
+                </h3>
+                <p className="text-xs mb-4" style={{ color: "#7FB0CB" }}>
+                  Compares stored wait predictions with actual time from queue entry to consultation start.
+                  Completed patients only.
+                </p>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs" style={{ color: "#5a7a8a" }}>Completed samples</p>
+                    <p className="text-2xl font-black mt-1" style={{ color: "#283040" }}>
+                      {queuePrediction.sample_count ?? 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs" style={{ color: "#5a7a8a" }}>Average predicted</p>
+                    <p className="text-2xl font-black mt-1" style={{ color: "#283040" }}>
+                      {queuePrediction.average_predicted_wait == null
+                        ? "—"
+                        : `${queuePrediction.average_predicted_wait} min`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs" style={{ color: "#5a7a8a" }}>Average actual</p>
+                    <p className="text-2xl font-black mt-1" style={{ color: "#283040" }}>
+                      {queuePrediction.average_actual_wait == null
+                        ? "—"
+                        : `${queuePrediction.average_actual_wait} min`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs" style={{ color: "#5a7a8a" }}>Today's measured MAE</p>
+                    <p className="text-2xl font-black mt-1" style={{ color: "#283040" }}>
+                      {queuePrediction.mae_minutes == null
+                        ? "—"
+                        : `${queuePrediction.mae_minutes} min`}
+                    </p>
+                  </div>
+                </div>
+
+                {!queuePrediction.sample_count && (
+                  <p className="text-xs mt-4" style={{ color: "#7FB0CB" }}>
+                    No completed live queue records are available for comparison yet.
+                  </p>
+                )}
+              </GlassCard>
+
+              <GlassCard className="p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold" style={{ color: "#283040" }}>
+                    Doctor Availability &amp; Workload
+                  </h3>
+                  <span className="text-xs" style={{ color: "#7FB0CB" }}>
+                    Today's active queue
+                  </span>
+                </div>
+
+                {doctorWorkload.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ color: "#7FB0CB", borderBottom: "1px solid #DDEEF8" }}>
+                          <th className="text-left py-3 pr-3">Doctor</th>
+                          <th className="text-left py-3 pr-3">Department</th>
+                          <th className="text-center py-3 px-2">Waiting</th>
+                          <th className="text-center py-3 px-2">Consulting</th>
+                          <th className="text-right py-3 pl-2">Availability</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {doctorWorkload.map((doctor: any) => (
+                          <tr
+                            key={doctor.doctor_id}
+                            style={{ borderBottom: "1px solid #EAF3F8", color: "#283040" }}
+                          >
+                            <td className="py-3 pr-3 font-semibold">{doctor.doctor_name}</td>
+                            <td className="py-3 pr-3">{doctor.department}</td>
+                            <td className="py-3 px-2 text-center">{doctor.waiting_patients}</td>
+                            <td className="py-3 px-2 text-center">{doctor.consulting_patients}</td>
+                            <td className="py-3 pl-2 text-right">
+                              <span
+                                className="text-xs font-bold"
+                                style={{
+                                  color: doctor.availability === "On Leave"
+                                    ? "#B74A42"
+                                    : doctor.availability === "Busy"
+                                      ? "#D08A52"
+                                      : "#16835D"
+                                }}
+                              >
+                                {doctor.availability}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm" style={{ color: "#7FB0CB" }}>
+                    No doctor records available.
+                  </p>
+                )}
+              </GlassCard>
+
+              <div className="grid grid-cols-1 gap-6 mb-6">
+
+                <GlassCard className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold" style={{ color: "#283040" }}>
+                      Potential No-Show Alerts
+                    </h3>
+                    <span className="text-xs font-bold" style={{ color: "#B74A42" }}>
+                      {potentialNoShows.length} alert(s)
+                    </span>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: "#7FB0CB" }}>
+                    Booked appointments at least {intelligence.no_show_grace_period_minutes ?? 15}
+                    {" "}minutes past their scheduled time without check-in.
+                    Alerts do not change appointment status.
+                  </p>
+
+                  {potentialNoShows.length ? (
+                    <div className="space-y-3">
+                      {potentialNoShows.map((appointment: any) => (
+                        <div
+                          key={appointment.appointment_id}
+                          className="rounded-xl p-3"
+                          style={{ backgroundColor: "#FFF5EF", border: "1px solid #F2D6C8" }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-sm" style={{ color: "#283040" }}>
+                              {appointment.patient_name}
+                            </span>
+                            <span className="text-xs font-bold" style={{ color: "#B74A42" }}>
+                              {appointment.overdue_minutes} min overdue
+                            </span>
+                          </div>
+                          <p className="text-xs mt-1" style={{ color: "#5a7a8a" }}>
+                            {appointment.booking_ref} · {appointment.department}
+                          </p>
+                          <p className="text-xs mt-1" style={{ color: "#7FB0CB" }}>
+                            Scheduled: {appointment.appointment_datetime}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm" style={{ color: "#16835D" }}>
+                      No potential no-shows detected today.
+                    </p>
+                  )}
+                </GlassCard>
+              </div>
+            </section>
           </>
         )}
       </div>
@@ -4259,10 +4486,11 @@ function AnalyticsPage() {
   );
 }
 
-function NavBar({ current, onNav, isAuthenticated, onLogout }: {
+function NavBar({ current, onNav, isAuthenticated, staffRole, onLogout }: {
   current: Page;
   onNav: (p: Page) => void;
   isAuthenticated: boolean;
+  staffRole: "admin" | "receptionist" | null;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -4275,6 +4503,8 @@ function NavBar({ current, onNav, isAuthenticated, onLogout }: {
     { id: "patient", label: "My Queue", Icon: QrCode },
     ...(isAuthenticated ? [
       { id: "eta" as Page, label: "Analytics & ETA", Icon: Brain },
+    ] : []),
+    ...(isAuthenticated && staffRole === "admin" ? [
       { id: "doctors" as Page, label: "Doctors", Icon: Stethoscope },
     ] : []),
   ];
@@ -4330,8 +4560,81 @@ function NavBar({ current, onNav, isAuthenticated, onLogout }: {
   );
 }
 
-function StaffLoginPage({ onLogin }: { onLogin: () => void }) {
-  const [username, setUsername] = useState("reception");
+function RoleSelectionPage({ onNav }: {
+  onNav: (page: Page) => void;
+}) {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-12"
+      style={{ background: "linear-gradient(135deg, #edf7fb, #f8fbfd)" }}
+    >
+      <div className="w-full max-w-3xl">
+        <h1 className="text-3xl font-black text-center mb-2" style={{ color: "#283040" }}>
+          Hospital Staff Portal
+        </h1>
+        <p className="text-center text-sm mb-9" style={{ color: "#5a7a8a" }}>
+          Select your account type to continue.
+        </p>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <button
+            onClick={() => onNav("receptionist-login")}
+            className="text-left bg-white rounded-3xl shadow-lg border border-[#A8CDE5]/40 p-7 hover:-translate-y-1 hover:shadow-xl transition-all"
+          >
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
+              style={{ backgroundColor: "#3F8EAC" }}>
+              <UserPlus size={27} className="text-white" />
+            </div>
+            <h2 className="text-xl font-black mb-2" style={{ color: "#283040" }}>
+              Receptionist Login
+            </h2>
+            <p className="text-sm leading-relaxed mb-5" style={{ color: "#5a7a8a" }}>
+              Register patients, manage appointments and operate the hospital queue.
+            </p>
+            <span className="font-bold text-sm" style={{ color: "#3F8EAC" }}>
+              Continue as Receptionist →
+            </span>
+          </button>
+
+          <button
+            onClick={() => onNav("admin-login")}
+            className="text-left bg-white rounded-3xl shadow-lg border border-[#A8CDE5]/40 p-7 hover:-translate-y-1 hover:shadow-xl transition-all"
+          >
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
+              style={{ backgroundColor: "#299B75" }}>
+              <Shield size={27} className="text-white" />
+            </div>
+            <h2 className="text-xl font-black mb-2" style={{ color: "#283040" }}>
+              Admin Login
+            </h2>
+            <p className="text-sm leading-relaxed mb-5" style={{ color: "#5a7a8a" }}>
+              Manage doctors, monitor operations and access administrative features.
+            </p>
+            <span className="font-bold text-sm" style={{ color: "#299B75" }}>
+              Continue as Admin →
+            </span>
+          </button>
+        </div>
+
+        <button
+          onClick={() => onNav("landing")}
+          className="block mx-auto mt-8 text-sm font-semibold"
+          style={{ color: "#5a7a8a" }}
+        >
+          ← Back to Home
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StaffLoginPage({ requiredRole, onLogin, onBack }: {
+  requiredRole: "admin" | "receptionist";
+  onLogin: (role: "admin" | "receptionist") => void;
+  onBack: () => void;
+}) {
+  const isAdmin = requiredRole === "admin";
+  const [username, setUsername] = useState(isAdmin ? "reception" : "receptionist");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -4350,11 +4653,27 @@ function StaffLoginPage({ onLogin }: { onLogin: () => void }) {
       });
 
       const data = await response.json();
+
       if (!response.ok) {
         throw new Error(data.error || "Login failed");
       }
 
-      onLogin();
+      const role = data.user?.role;
+
+      if (role !== requiredRole) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        });
+
+        throw new Error(
+          isAdmin
+            ? "Access denied. Please use an Admin account."
+            : "Access denied. Please use a Receptionist account."
+        );
+      }
+
+      onLogin(role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login");
     } finally {
@@ -4367,22 +4686,35 @@ function StaffLoginPage({ onLogin }: { onLogin: () => void }) {
       style={{ background: "linear-gradient(135deg, #edf7fb, #f8fbfd)" }}>
       <form onSubmit={handleLogin}
         className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-[#A8CDE5]/30">
+
+        <button type="button" onClick={onBack}
+          className="text-sm font-semibold mb-7"
+          style={{ color: "#5a7a8a" }}>
+          ← Back to account selection
+        </button>
+
         <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
-          style={{ backgroundColor: "#3F8EAC" }}>
-          <Shield size={27} className="text-white" />
+          style={{ backgroundColor: isAdmin ? "#299B75" : "#3F8EAC" }}>
+          {isAdmin
+            ? <Shield size={27} className="text-white" />
+            : <UserPlus size={27} className="text-white" />}
         </div>
+
         <h1 className="text-2xl font-black text-center mb-2" style={{ color: "#283040" }}>
-          Staff Login
+          {isAdmin ? "Admin Login" : "Receptionist Login"}
         </h1>
+
         <p className="text-sm text-center mb-8" style={{ color: "#5a7a8a" }}>
-          Sign in to access the hospital reception dashboard.
+          {isAdmin
+            ? "Sign in to access hospital administration."
+            : "Sign in to access patient registration and queue management."}
         </p>
 
         <label className="block text-sm font-semibold mb-2">Username</label>
         <input value={username} onChange={e => setUsername(e.target.value)}
           autoComplete="username" required
           className="w-full border rounded-xl px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-[#3F8EAC]"
-          placeholder="Enter staff username" />
+          placeholder="Enter username" />
 
         <label className="block text-sm font-semibold mb-2">Password</label>
         <input type="password" value={password}
@@ -4395,13 +4727,14 @@ function StaffLoginPage({ onLogin }: { onLogin: () => void }) {
 
         <button type="submit" disabled={loading}
           className="w-full rounded-xl py-3 font-bold text-white disabled:opacity-60"
-          style={{ backgroundColor: "#3F8EAC" }}>
-          {loading ? "Signing in..." : "Sign In"}
+          style={{ backgroundColor: isAdmin ? "#299B75" : "#3F8EAC" }}>
+          {loading ? "Signing in..." : isAdmin ? "Sign In as Admin" : "Sign In as Receptionist"}
         </button>
       </form>
     </div>
   );
 }
+
 
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
@@ -4410,12 +4743,19 @@ export default function App() {
   const [page, setPage] = useState<Page>("landing");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [staffRole, setStaffRole] = useState<"admin" | "receptionist" | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
-      .then(res => {
-        if (res.ok) setIsAuthenticated(true);
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        const role = data.user?.role;
+        if (role === "admin" || role === "receptionist") {
+          setStaffRole(role);
+          setIsAuthenticated(true);
+        }
       })
       .catch(error => console.error("Session check failed:", error))
       .finally(() => setAuthChecked(true));
@@ -4454,10 +4794,16 @@ export default function App() {
 
   useEffect(() => {
     const staffPages: Page[] = ["reception", "eta", "doctors", "analytics"];
+
     if (authChecked && !isAuthenticated && staffPages.includes(page)) {
       setPage("login");
+      return;
     }
-  }, [page, isAuthenticated, authChecked]);
+
+    if (authChecked && isAuthenticated && page === "doctors" && staffRole !== "admin") {
+      setPage("reception");
+    }
+  }, [page, isAuthenticated, authChecked, staffRole]);
 
   async function handleLogout() {
     try {
@@ -4467,27 +4813,35 @@ export default function App() {
       });
     } finally {
       setIsAuthenticated(false);
+      setStaffRole(null);
       setPage("landing");
     }
   }
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {page !== "landing" && page !== "login" && (
+      {page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" && (
         <NavBar
           current={page}
           onNav={setPage}
           isAuthenticated={isAuthenticated}
+          staffRole={staffRole}
           onLogout={handleLogout}
         />
       )}
-      <div className={page !== "landing" && page !== "login" ? "pt-16" : ""}>
+      <div className={page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" ? "pt-16" : ""}>
         {page === "landing" && <LandingPage onNav={setPage} />}
-        {page === "login" && (
-          <StaffLoginPage onLogin={() => {
-            setIsAuthenticated(true);
-            setPage("reception");
-          }} />
+        {page === "login" && <RoleSelectionPage onNav={setPage} />}
+        {(page === "admin-login" || page === "receptionist-login") && (
+          <StaffLoginPage
+            requiredRole={page === "admin-login" ? "admin" : "receptionist"}
+            onBack={() => setPage("login")}
+            onLogin={role => {
+              setStaffRole(role);
+              setIsAuthenticated(true);
+              setPage("reception");
+            }}
+          />
         )}
         {page === "reception" && isAuthenticated && (
           <ReceptionPage patients={patients} setPatients={setPatients} />
@@ -4499,7 +4853,7 @@ export default function App() {
             <AnalyticsPage />
           </>
         )}
-        {page === "doctors" && isAuthenticated && (
+        {page === "doctors" && isAuthenticated && staffRole === "admin" && (
           <DoctorsPage patients={patients} />
         )}
       </div>

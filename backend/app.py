@@ -8,10 +8,12 @@ from werkzeug.security import check_password_hash
 import pandas as pd
 import joblib
 import os
+import math
 import mysql.connector
 
 
-load_dotenv()
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
@@ -51,6 +53,16 @@ def staff_required(func):
     def wrapper(*args, **kwargs):
         if not session.get("staff_id"):
             return jsonify({"error": "Staff login required"}), 401
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def admin_required(func):
+    @wraps(func)
+    @staff_required
+    def wrapper(*args, **kwargs):
+        if session.get("role") != "admin":
+            return jsonify({"error": "Admin access required"}), 403
         return func(*args, **kwargs)
     return wrapper
 
@@ -525,6 +537,205 @@ def get_analytics():
             for row in patient_rows
         ]
 
+        # ---------------------------------------------------------
+        # AI QUEUE INTELLIGENCE
+        # ---------------------------------------------------------
+
+        # These are the measured evaluation metrics of the trained
+        # Linear Regression model, not live confidence percentages.
+        model_performance = {
+            "model_name": "Linear Regression",
+            "mae_minutes": 27.77,
+            "rmse_minutes": 40.17,
+            "r2_score": 0.2509,
+            "reliability_label": "Limited predictive fit",
+            "sample_description": "Previously evaluated model test results"
+        }
+
+        # Compare stored predictions with actual waiting time.
+        cursor.execute("""
+            SELECT
+                q.predicted_wait_time,
+                TIMESTAMPDIFF(
+                    SECOND,
+                    q.added_at,
+                    q.consulting_started_at
+                ) / 60 AS actual_wait
+            FROM queue q
+            JOIN patients p
+                ON q.patient_id = p.patient_id
+            WHERE DATE(p.registered_at) = CURDATE()
+              AND p.patient_id >= %s
+              AND q.status = 'completed'
+              AND q.predicted_wait_time IS NOT NULL
+              AND q.predicted_wait_time >= 0
+              AND q.added_at IS NOT NULL
+              AND q.consulting_started_at IS NOT NULL
+              AND q.consulting_started_at >= q.added_at
+        """, (LIVE_PATIENT_ID_MIN,))
+
+        performance_rows = cursor.fetchall()
+        prediction_errors = []
+
+        for row in performance_rows:
+            predicted = float(row["predicted_wait_time"])
+            actual = float(row["actual_wait"])
+
+            if predicted >= 0 and actual >= 0:
+                prediction_errors.append({
+                    "predicted": predicted,
+                    "actual": actual,
+                    "error": abs(predicted - actual)
+                })
+
+        sample_count = len(prediction_errors)
+
+        if sample_count:
+            queue_prediction_performance = {
+                "sample_count": sample_count,
+                "average_predicted_wait": round(
+                    sum(item["predicted"] for item in prediction_errors)
+                    / sample_count, 1
+                ),
+                "average_actual_wait": round(
+                    sum(item["actual"] for item in prediction_errors)
+                    / sample_count, 1
+                ),
+                "mae_minutes": round(
+                    sum(item["error"] for item in prediction_errors)
+                    / sample_count, 1
+                ),
+                "rmse_minutes": round(
+                    (
+                        sum(item["error"] ** 2 for item in prediction_errors)
+                        / sample_count
+                    ) ** 0.5, 1
+                )
+            }
+        else:
+            queue_prediction_performance = {
+                "sample_count": 0,
+                "average_predicted_wait": None,
+                "average_actual_wait": None,
+                "mae_minutes": None,
+                "rmse_minutes": None
+            }
+
+        # Doctor workload uses today's live queue records.
+        cursor.execute("""
+            SELECT
+                d.doctor_id,
+                d.doctor_name,
+                d.department,
+                d.specialization,
+                d.status AS doctor_status,
+                COALESCE(w.waiting_count, 0) AS waiting_patients,
+                COALESCE(c.consulting_count, 0) AS consulting_patients,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(d.status, '')))
+                         IN ('ON LEAVE', 'UNAVAILABLE')
+                        THEN 'On Leave'
+                    WHEN COALESCE(c.consulting_count, 0) > 0
+                        THEN 'Busy'
+                    ELSE 'Available'
+                END AS availability
+            FROM doctors d
+            LEFT JOIN (
+                SELECT
+                    p.doctor_id,
+                    COUNT(*) AS waiting_count
+                FROM patients p
+                JOIN queue q ON q.patient_id = p.patient_id
+                WHERE DATE(p.registered_at) = CURDATE()
+                  AND q.status = 'waiting'
+                GROUP BY p.doctor_id
+            ) w ON w.doctor_id = d.doctor_id
+            LEFT JOIN (
+                SELECT
+                    p.doctor_id,
+                    COUNT(*) AS consulting_count
+                FROM patients p
+                JOIN queue q ON q.patient_id = p.patient_id
+                WHERE DATE(p.registered_at) = CURDATE()
+                  AND q.status = 'consulting'
+                GROUP BY p.doctor_id
+            ) c ON c.doctor_id = d.doctor_id
+            ORDER BY
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(d.status, '')))
+                         IN ('ON LEAVE', 'UNAVAILABLE') THEN 2
+                    WHEN COALESCE(c.consulting_count, 0) > 0 THEN 1
+                    ELSE 0
+                END,
+                waiting_patients DESC,
+                d.doctor_name ASC
+        """)
+
+        doctor_workload = [
+            {
+                "doctor_id": row["doctor_id"],
+                "doctor_name": row["doctor_name"],
+                "department": row["department"],
+                "specialization": row["specialization"] or "",
+                "availability": row["availability"],
+                "waiting_patients": int(row["waiting_patients"] or 0),
+                "consulting_patients": int(row["consulting_patients"] or 0),
+                "total_active_patients": (
+                    int(row["waiting_patients"] or 0)
+                    + int(row["consulting_patients"] or 0)
+                )
+            }
+            for row in cursor.fetchall()
+        ]
+
+        # Potential no-shows: booked appointments at least 15 minutes late.
+        # This is an alert only; appointment status is never modified here.
+        cursor.execute("""
+            SELECT
+                appointment_id,
+                booking_ref,
+                patient_name,
+                department,
+                appointment_datetime,
+                TIMESTAMPDIFF(
+                    MINUTE,
+                    appointment_datetime,
+                    NOW()
+                ) AS overdue_minutes
+            FROM appointments
+            WHERE DATE(appointment_datetime) = CURDATE()
+              AND status = 'booked'
+              AND appointment_datetime < DATE_SUB(
+                    NOW(),
+                    INTERVAL 15 MINUTE
+              )
+            ORDER BY appointment_datetime ASC
+            LIMIT 50
+        """)
+
+        potential_no_shows = []
+
+        for row in cursor.fetchall():
+            potential_no_shows.append({
+                "appointment_id": int(row["appointment_id"]),
+                "booking_ref": row["booking_ref"],
+                "patient_name": row["patient_name"],
+                "department": row["department"],
+                "appointment_datetime": (
+                    row["appointment_datetime"].strftime("%Y-%m-%d %I:%M %p")
+                    if row["appointment_datetime"] else ""
+                ),
+                "overdue_minutes": int(row["overdue_minutes"] or 0)
+            })
+
+        queue_intelligence = {
+            "model_performance": model_performance,
+            "queue_prediction_performance": queue_prediction_performance,
+            "doctor_workload": doctor_workload,
+            "potential_no_shows": potential_no_shows,
+            "no_show_grace_period_minutes": 15
+        }
+
         return jsonify({
             "total_patients_today": total_patients,
             "completed_patients_today": completed_patients,
@@ -542,6 +753,7 @@ def get_analytics():
             "patients_by_department": patients_by_department,
             "patients_by_priority": patients_by_priority,
             "average_wait_by_department": average_wait_by_department,
+            "queue_intelligence": queue_intelligence,
             "patient_records": patient_records
         })
 
@@ -559,7 +771,7 @@ def get_analytics():
 
 
 @app.route("/doctors/<doctor_id>/leave", methods=["POST"])
-@staff_required
+@admin_required
 def update_doctor_leave(doctor_id):
 
     connection = None
@@ -771,7 +983,7 @@ def get_patient_by_token(token):
         """)
 
         department_service_times = {
-            row["Department"]: max(1, round(float(row["avg_duration"])))
+            row["Department"]: max(1, math.ceil(float(row["avg_duration"])))
             for row in cursor.fetchall()
             if row["Department"]
         }
@@ -780,6 +992,8 @@ def get_patient_by_token(token):
         live_eta_minutes = None
         live_eta_seconds = None
         queue_position = None
+        patient_consultation_remaining = None
+        patient_consultation_remaining_seconds = None
 
         # Only active queue entries have a live ETA.
         if patient["queue_status"] in ("waiting", "consulting"):
@@ -811,6 +1025,8 @@ def get_patient_by_token(token):
 
             consulting_remaining = 0
             consulting_remaining_seconds = 0
+            patient_consultation_remaining = None
+            patient_consultation_remaining_seconds = None
             waiting_rows = []
 
             service_time = department_service_times.get(
@@ -820,42 +1036,30 @@ def get_patient_by_token(token):
 
             for row in department_rows:
                 if row["status"] == "consulting":
-                    remaining = service_time
+                    # An active consultation contributes one full average service slot.
+                    # This prevents long-running consultations from producing a false 0-minute ETA.
                     remaining_seconds = service_time * 60
 
-                    if row["consulting_started_at"]:
-                        cursor.execute("""
-                            SELECT GREATEST(
-                                0,
-                                %s * 60 - TIMESTAMPDIFF(
-                                    SECOND,
-                                    %s,
-                                    NOW()
-                                )
-                            ) AS remaining_seconds
-                        """, (
-                            service_time,
-                            row["consulting_started_at"]
-                        ))
+                    remaining = (remaining_seconds + 59) // 60
 
-                        remaining_seconds = int(
-                            cursor.fetchone()["remaining_seconds"]
-                        )
+                    consulting_remaining = max(
+                        consulting_remaining, remaining
+                    )
+                    consulting_remaining_seconds = max(
+                        consulting_remaining_seconds, remaining_seconds
+                    )
 
-                        remaining = (
-                            remaining_seconds + 59
-                        ) // 60
-
-                    consulting_remaining = max(consulting_remaining, service_time)
-                    consulting_remaining_seconds = max(consulting_remaining_seconds, service_time * 60)
+                    if row["patient_id"] == patient["patient_id"]:
+                        patient_consultation_remaining = remaining
+                        patient_consultation_remaining_seconds = remaining_seconds
 
                 elif row["status"] == "waiting":
                     waiting_rows.append(row)
 
             if patient["queue_status"] == "consulting":
                 queue_position = 0
-                live_eta_minutes = consulting_remaining
-                live_eta_seconds = consulting_remaining_seconds
+                live_eta_minutes = 0
+                live_eta_seconds = 0
 
             else:
                 matching_index = next(
@@ -892,6 +1096,16 @@ def get_patient_by_token(token):
         patient["queue_position"] = queue_position
         patient["live_eta_minutes"] = live_eta_minutes
         patient["live_eta_seconds"] = live_eta_seconds
+        patient["consultation_remaining_minutes"] = (
+            patient_consultation_remaining
+            if patient["queue_status"] == "consulting"
+            else None
+        )
+        patient["consultation_remaining_seconds"] = (
+            patient_consultation_remaining_seconds
+            if patient["queue_status"] == "consulting"
+            else None
+        )
 
         return jsonify(patient), 200
 
@@ -1926,7 +2140,7 @@ def get_queue():
     """)
 
     department_service_times = {
-        row["Department"]: max(1, round(float(row["avg_duration"])))
+        row["Department"]: max(1, math.ceil(float(row["avg_duration"])))
         for row in cursor.fetchall()
         if row["Department"]
     }
@@ -1956,37 +2170,24 @@ def get_queue():
         )
 
         if row["status"] == "consulting":
-            remaining = service_time
+            # An active consultation contributes one full average service slot.
+            # This prevents long-running consultations from producing a false 0-minute ETA.
+            remaining_seconds = service_time * 60
 
-            if row["consulting_started_at"]:
-                cursor.execute(
-                    """
-                    SELECT GREATEST(
-                        0,
-                        %s * 60 - TIMESTAMPDIFF(
-                            SECOND,
-                            %s,
-                            NOW()
-                        )
-                    ) AS remaining_seconds
-                    """,
-                    (service_time, row["consulting_started_at"])
-                )
-
-                remaining_seconds = int(
-                    cursor.fetchone()["remaining_seconds"]
-                )
-
-                remaining = (
-                    remaining_seconds + 59
-                ) // 60
+            remaining = (remaining_seconds + 59) // 60
 
             row["queue_position"] = 0
-            row["live_eta_minutes"] = remaining
-            row["live_eta_seconds"] = remaining_seconds
+            row["live_eta_minutes"] = 0
+            row["live_eta_seconds"] = 0
+            row["consultation_remaining_minutes"] = remaining
+            row["consultation_remaining_seconds"] = remaining_seconds
 
-            state["consulting_remaining"] = max(state["consulting_remaining"], service_time)
-            state["consulting_remaining_seconds"] = max(state["consulting_remaining_seconds"], service_time * 60)
+            state["consulting_remaining"] = max(
+                state["consulting_remaining"], remaining
+            )
+            state["consulting_remaining_seconds"] = max(
+                state["consulting_remaining_seconds"], remaining_seconds
+            )
 
         else:
             state["waiting"].append(row)
