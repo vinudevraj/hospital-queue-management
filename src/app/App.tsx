@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Page = "landing" | "reception" | "patient" | "eta" | "doctors" | "analytics";
+type Page = "landing" | "login" | "reception" | "patient" | "eta" | "doctors" | "analytics";
 type PatientStatus = "consulting" | "waiting" | "completed";
 
 interface Patient {
@@ -425,7 +425,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => onNav("reception")}
+              onClick={() => onNav("login")}
               className="px-4 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 hover:shadow-lg transition-all"
               style={{ backgroundColor: "#3F8EAC" }}
             >
@@ -469,7 +469,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
 
             <div className="flex flex-wrap gap-3">
               <button
-                onClick={() => onNav("reception")}
+                onClick={() => onNav("login")}
                 className="px-6 py-3.5 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
                 style={{ backgroundColor: "#3F8EAC" }}
               >
@@ -640,7 +640,7 @@ function LandingPage({ onNav }: { onNav: (p: Page) => void }) {
 
             <div className="flex flex-wrap justify-center gap-3">
               <button
-                onClick={() => onNav("reception")}
+                onClick={() => onNav("login")}
                 className="px-6 py-3 rounded-xl font-bold text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
                 style={{ backgroundColor: "#3F8EAC" }}
               >
@@ -693,6 +693,15 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [servedToday, setServedToday] = useState(0);
+  const [appointmentDate, setAppointmentDate] = useState(
+    new Date().getFullYear() + "-" +
+    String(new Date().getMonth() + 1).padStart(2, "0") + "-" +
+    String(new Date().getDate()).padStart(2, "0")
+  );
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [appointmentsError, setAppointmentsError] = useState("");
+  const [checkingInId, setCheckingInId] = useState<number | null>(null);
   const [form, setForm] = useState({
     name: "",
     department: "Internal Medicine",
@@ -705,7 +714,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
   });
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/doctors")
+    fetch("/api/doctors")
       .then(res => {
         if (!res.ok) throw new Error("Failed to load doctors");
         return res.json();
@@ -753,10 +762,10 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
     try {
       const [patientsResponse, queueResponse] = await Promise.all([
-        fetch("http://127.0.0.1:5000/patients", {
+        fetch("/api/patients", {
           cache: "no-store",
         }),
-        fetch("http://127.0.0.1:5000/queue", {
+        fetch("/api/queue", {
           cache: "no-store",
         }),
       ]);
@@ -951,6 +960,42 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
   const toast = (msg: string) => { setNotif(msg); setTimeout(() => setNotif(null), 3000); };
 
+  const loadAppointments = async () => {
+    setAppointmentsLoading(true);
+    setAppointmentsError("");
+
+    try {
+      const params = new URLSearchParams({ date: appointmentDate });
+
+      if (departmentFilter !== "all") {
+        params.set("department", departmentFilter);
+      }
+
+      const response = await fetch(
+        `/api/appointments?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load appointments.");
+      }
+
+      setAppointments(data.appointments || []);
+    } catch (error) {
+      setAppointmentsError(
+        error instanceof Error ? error.message : "Unable to load appointments."
+      );
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAppointments();
+  }, [appointmentDate, departmentFilter]);
+
   const runQueueAction = async (
     action: () => Promise<void>
   ) => {
@@ -969,11 +1014,42 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     await refreshLiveQueue();
   };
 
+  const checkInAppointment = async (appointmentId: number) => {
+    setCheckingInId(appointmentId);
+
+    try {
+      await runQueueAction(async () => {
+        const response = await fetch(
+          `/api/appointments/${appointmentId}/check-in`,
+          { method: "POST" }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Unable to check in appointment.");
+        }
+
+        toast(
+          `Check-in successful. Token ${data.token} assigned to ${data.doctor_name}.`
+        );
+      });
+
+      await loadAppointments();
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Unable to check in appointment."
+      );
+    } finally {
+      setCheckingInId(null);
+    }
+  };
+
   const callNext = async () => {
     await runQueueAction(async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:5000/queue/call-next",
+          "/api/queue/call-next",
           {
             method: "POST",
             headers: {
@@ -1013,7 +1089,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     await runQueueAction(async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/queue/complete/${patientId}`,
+          `/api/queue/complete/${patientId}`,
           {
             method: "POST",
             headers: {
@@ -1046,7 +1122,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     await runQueueAction(async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/queue/skip/${patientId}`,
+          `/api/queue/skip/${patientId}`,
           {
             method: "POST",
             headers: {
@@ -1083,7 +1159,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     await runQueueAction(async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/queue/emergency/${patientId}`,
+          `/api/queue/emergency/${patientId}`,
           {
             method: "POST",
             headers: {
@@ -1152,7 +1228,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
     try {
       const predictionResponse = await fetch(
-        "http://127.0.0.1:5000/predict",
+        "/api/predict",
         {
           method: "POST",
           headers: {
@@ -1188,7 +1264,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       );
 
       const patientResponse = await fetch(
-        "http://127.0.0.1:5000/patients",
+        "/api/patients",
         {
           method: "POST",
           headers: {
@@ -1325,6 +1401,122 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             </GlassCard>
           ))}
         </div>
+
+        {/* Appointments */}
+        <GlassCard className="p-5 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+            <div>
+              <h2 className="text-xl font-black" style={{ color: "#283040" }}>
+                Appointments
+              </h2>
+              <p className="text-sm mt-1" style={{ color: "#7FB0CB" }}>
+                View bookings and check in patients on their appointment date.
+              </p>
+            </div>
+            <input
+              type="date"
+              value={appointmentDate}
+              onChange={e => setAppointmentDate(e.target.value)}
+              className="px-4 py-2 rounded-xl text-sm outline-none"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.7)",
+                color: "#283040",
+                border: "1px solid rgba(168,205,229,0.5)"
+              }}
+            />
+          </div>
+
+          {appointmentsLoading ? (
+            <p className="py-8 text-center text-sm" style={{ color: "#7FB0CB" }}>
+              Loading appointments...
+            </p>
+          ) : appointmentsError ? (
+            <p className="py-8 text-center text-sm text-red-600">
+              {appointmentsError}
+            </p>
+          ) : appointments.length === 0 ? (
+            <p className="py-8 text-center text-sm" style={{ color: "#7FB0CB" }}>
+              No appointments found for this date.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px]">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(168,205,229,0.3)" }}>
+                    {["Booking Reference", "Patient", "Department", "Appointment Time", "Doctor", "Status", "Action"].map(header => (
+                      <th key={header} className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: "#7FB0CB" }}>
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointments.map(appointment => (
+                    <tr key={appointment.appointment_id} style={{ borderBottom: "1px solid rgba(168,205,229,0.15)" }}>
+                      <td className="px-4 py-4 font-mono text-sm font-bold" style={{ color: "#3F8EAC" }}>
+                        {appointment.booking_ref}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="text-sm font-semibold" style={{ color: "#283040" }}>
+                          {appointment.patient_name}
+                        </div>
+                        <div className="text-xs" style={{ color: "#7FB0CB" }}>
+                          Age {appointment.age} · {appointment.phone}
+                        </div>
+                        <div className="text-xs mt-1" style={{ color: "#5a7a8a" }}>
+                          {appointment.condition_name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm" style={{ color: "#283040" }}>
+                        {appointment.department}
+                      </td>
+                      <td className="px-4 py-4 text-sm font-semibold" style={{ color: "#283040" }}>
+                        {new Date(appointment.appointment_datetime.replace(" ", "T")).toLocaleTimeString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true
+                        })}
+                      </td>
+                      <td className="px-4 py-4 text-sm" style={{ color: "#283040" }}>
+                        {appointment.doctor_name || "Assigned at check-in"}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="px-3 py-1 rounded-full text-xs font-bold capitalize"
+                          style={{
+                            backgroundColor: appointment.status === "checked_in" ? "#dcfce7" : "#e0f2fe",
+                            color: appointment.status === "checked_in" ? "#15803d" : "#0369a1"
+                          }}>
+                          {appointment.status.replace("_", " ")}
+                        </span>
+                        {appointment.status === "checked_in" && appointment.patient_id && (
+                          <div className="text-xs mt-1 font-semibold" style={{ color: "#3F8EAC" }}>
+                            Patient ID: {appointment.patient_id}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        {appointment.status === "booked" ? (
+                          <button
+                            onClick={() => checkInAppointment(appointment.appointment_id)}
+                            disabled={checkingInId !== null}
+                            className="px-3 py-2 rounded-lg text-xs font-bold text-white disabled:opacity-50"
+                            style={{ backgroundColor: "#3F8EAC" }}
+                          >
+                            {checkingInId === appointment.appointment_id ? "Checking in..." : "Check In"}
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold" style={{ color: "#15803d" }}>
+                            Checked in
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </GlassCard>
 
         {/* Filters & Search */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
@@ -1644,7 +1836,7 @@ function PatientPage() {
   const [registrationError, setRegistrationError] = useState("");
   const [registrationSuccess, setRegistrationSuccess] = useState("");
 
-  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [showAppointmentForm, setShowAppointmentForm] = useState(true);
   const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [appointmentError, setAppointmentError] = useState("");
   const [appointmentSuccess, setAppointmentSuccess] = useState("");
@@ -1690,7 +1882,7 @@ function PatientPage() {
   ];
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/doctors")
+    fetch("/api/doctors")
       .then(res => {
         if (!res.ok) {
           throw new Error("Failed to load doctors");
@@ -1708,13 +1900,6 @@ function PatientPage() {
       });
   }, []);
 
-  const handleDepartmentChange = (department: string) => {
-    setRegistrationForm(form => ({
-      ...form,
-      department,
-    }));
-  };
-
   const loadAppointmentSlots = async (
     department: string,
     date: string
@@ -1730,7 +1915,7 @@ function PatientPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/appointments/slots?department=${encodeURIComponent(department)}&date=${encodeURIComponent(date)}`
+        `/api/appointments/slots?department=${encodeURIComponent(department)}&date=${encodeURIComponent(date)}`
       );
 
       const data = await response.json();
@@ -1757,13 +1942,24 @@ function PatientPage() {
       time: "",
     }));
 
-    if (appointmentForm.department && appointmentForm.date) {
+    const now = new Date();
+    const todayString =
+      now.getFullYear() + "-" +
+      String(now.getMonth() + 1).padStart(2, "0") + "-" +
+      String(now.getDate()).padStart(2, "0");
+
+    if (
+      appointmentForm.department &&
+      appointmentForm.date &&
+      appointmentForm.date > todayString
+    ) {
       loadAppointmentSlots(
         appointmentForm.department,
         appointmentForm.date
       );
     } else {
       setAppointmentSlots([]);
+      setSlotsLoading(false);
     }
   }, [appointmentForm.department, appointmentForm.date]);
 
@@ -1791,7 +1987,7 @@ function PatientPage() {
       return;
     }
 
-    if (!/^\\d{10}$/.test(phone)) {
+    if (!/^\d{10}$/.test(phone.replace(/\D/g, ""))) {
       setAppointmentError("Please enter a valid 10-digit phone number.");
       return;
     }
@@ -1809,7 +2005,7 @@ function PatientPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:5000/appointments",
+        "/api/appointments",
         {
           method: "POST",
           headers: {
@@ -1876,11 +2072,11 @@ function PatientPage() {
     setRegistrationError("");
     setRegistrationSuccess("");
 
-    const name = registrationForm.name.trim();
-    const age = Number(registrationForm.age);
-    const phone = registrationForm.phone.trim();
-    const department = registrationForm.department;
-    const condition = registrationForm.condition.trim();
+    const name = appointmentForm.name.trim();
+    const age = Number(appointmentForm.age);
+    const phone = appointmentForm.phone.trim();
+    const department = appointmentForm.department;
+    const condition = appointmentForm.condition.trim();
 
     if (!name || !age || !phone || !department || !condition) {
       setRegistrationError("Please complete all required fields.");
@@ -1912,7 +2108,7 @@ function PatientPage() {
 
     try {
       const predictionResponse = await fetch(
-        "http://127.0.0.1:5000/predict",
+        "/api/predict",
         {
           method: "POST",
           headers: {
@@ -1950,7 +2146,7 @@ function PatientPage() {
       );
 
       const patientResponse = await fetch(
-        "http://127.0.0.1:5000/patients",
+        "/api/patients",
         {
           method: "POST",
           headers: {
@@ -1965,10 +2161,13 @@ function PatientPage() {
             triage_category: "Non-urgent",
             predicted_wait_time: predictedWaitTime,
             is_emergency: false,
-            appointment_date: now
-              .toISOString()
-              .slice(0, 19)
-              .replace("T", " "),
+            appointment_date:
+              now.getFullYear() + "-" +
+              String(now.getMonth() + 1).padStart(2, "0") + "-" +
+              String(now.getDate()).padStart(2, "0") + " " +
+              String(now.getHours()).padStart(2, "0") + ":" +
+              String(now.getMinutes()).padStart(2, "0") + ":" +
+              String(now.getSeconds()).padStart(2, "0"),
           }),
         }
       );
@@ -1986,18 +2185,21 @@ function PatientPage() {
         `Registration successful. Your token is ${patientData.token}.`
       );
 
-      setRegistrationForm({
+      setAppointmentForm({
         name: "",
         age: "",
         phone: "",
         department: "",
         condition: "",
+        date: new Date().getFullYear() + "-" +
+          String(new Date().getMonth() + 1).padStart(2, "0") + "-" +
+          String(new Date().getDate()).padStart(2, "0"),
+        time: "",
       });
 
-      setShowRegistration(false);
 
       const lookupResponse = await fetch(
-        `http://127.0.0.1:5000/patients/token/${encodeURIComponent(
+        `/api/patients/token/${encodeURIComponent(
           patientData.token
         )}`
       );
@@ -2012,6 +2214,24 @@ function PatientPage() {
       );
     } finally {
       setRegistrationLoading(false);
+    }
+  };
+
+  const submitRegistration = async () => {
+    const today = new Date();
+    const todayString = today.getFullYear() + "-" +
+      String(today.getMonth() + 1).padStart(2, "0") + "-" +
+      String(today.getDate()).padStart(2, "0");
+
+    if (appointmentForm.date < todayString) {
+      setRegistrationError("Please select today or a future date.");
+      return;
+    }
+
+    if (appointmentForm.date === todayString) {
+      await registerOnline();
+    } else {
+      await bookAppointment();
     }
   };
 
@@ -2058,7 +2278,7 @@ function PatientPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/patients/token/${encodeURIComponent(enteredToken)}`
+        `/api/patients/token/${encodeURIComponent(enteredToken)}`
       );
 
       const data = await response.json();
@@ -2088,7 +2308,7 @@ function PatientPage() {
     const refreshPatient = async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/patients/token/${encodeURIComponent(patient.token)}`
+          `/api/patients/token/${encodeURIComponent(patient.token)}`
         );
 
         if (!response.ok) {
@@ -2175,24 +2395,15 @@ function PatientPage() {
                   style={{ color: "#3F8EAC" }}
                 />
                 <h2 className="text-lg font-bold" style={{ color: "#173B4D" }}>
-                  Book an Appointment
+                  Online Patient Registration
                 </h2>
               </div>
               <p className="text-sm" style={{ color: "#7A929E" }}>
-                Schedule a hospital visit in advance by choosing a date and time.
+                Register for a visit today or reserve an appointment for a future date.
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setShowAppointmentForm(value => !value);
-                setAppointmentError("");
-              }}
-              className="px-5 py-2.5 rounded-xl font-bold text-white hover:opacity-90"
-              style={{ backgroundColor: "#3F8EAC" }}
-            >
-              {showAppointmentForm ? "Close Form" : "Book Now"}
-            </button>
+
           </div>
 
           {appointmentSuccess && (
@@ -2321,7 +2532,7 @@ function PatientPage() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
-                    Appointment Date *
+                    Preferred Visit Date *
                   </label>
                   <input
                     type="date"
@@ -2359,6 +2570,12 @@ function PatientPage() {
                 </div>
               </div>
 
+              {appointmentForm.date > (() => {
+                const now = new Date();
+                return now.getFullYear() + "-" +
+                  String(now.getMonth() + 1).padStart(2, "0") + "-" +
+                  String(now.getDate()).padStart(2, "0");
+              })() && (
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ color: "#365766" }}>
                   Available Time Slots *
@@ -2414,15 +2631,18 @@ function PatientPage() {
                   Booking hours: 9:00 AM–5:00 PM.
                 </p>
               </div>
+              )}
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={bookAppointment}
-                  disabled={appointmentLoading || slotsLoading}
+                  onClick={submitRegistration}
+                  disabled={appointmentLoading || registrationLoading || slotsLoading}
                   className="px-6 py-3 rounded-xl font-bold text-white hover:opacity-90 disabled:opacity-60"
                   style={{ backgroundColor: "#3F8EAC" }}
                 >
-                  {appointmentLoading ? "Booking..." : "Confirm Appointment"}
+                  {appointmentLoading || registrationLoading
+                    ? "Submitting..."
+                    : "Submit Registration"}
                 </button>
 
                 <button
@@ -2433,262 +2653,6 @@ function PatientPage() {
                   disabled={appointmentLoading}
                   className="px-6 py-3 rounded-xl font-bold border"
                   style={{ borderColor: "#C9DEE6", color: "#365766" }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div
-          className="rounded-2xl p-6 mb-6 border"
-          style={{
-            backgroundColor: "white",
-            borderColor: "#D9EAF0",
-          }}
-        >
-          <div className="flex items-center justify-between gap-4 mb-5">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <UserPlus
-                  className="w-5 h-5"
-                  style={{ color: "#3F8EAC" }}
-                />
-                <h2
-                  className="text-lg font-bold"
-                  style={{ color: "#173B4D" }}
-                >
-                  Register for a Visit
-                </h2>
-              </div>
-              <p className="text-sm" style={{ color: "#7A929E" }}>
-                Complete your details to receive a queue token online.
-              </p>
-            </div>
-
-            <span
-              className="hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-semibold"
-              style={{
-                backgroundColor: "#E8F4F8",
-                color: "#3F8EAC",
-              }}
-            >
-              Online Registration
-            </span>
-          </div>
-
-          {registrationSuccess && (
-            <div
-              className="mb-5 p-4 rounded-xl border"
-              style={{
-                backgroundColor: "#EFFAF3",
-                borderColor: "#B9E4C7",
-                color: "#287A43",
-              }}
-            >
-              <div className="font-bold">Registration Complete</div>
-              <div className="text-sm mt-1">
-                {registrationSuccess} Your queue details are shown below.
-              </div>
-            </div>
-          )}
-
-          {registrationError && (
-            <div
-              className="mb-5 p-4 rounded-xl"
-              style={{
-                backgroundColor: "#FDECEC",
-                color: "#A33A35",
-              }}
-            >
-              {registrationError}
-            </div>
-          )}
-
-          {!showRegistration ? (
-            <button
-              onClick={() => {
-                setRegistrationError("");
-                setRegistrationSuccess("");
-                setShowRegistration(true);
-              }}
-              className="px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90"
-              style={{ backgroundColor: "#3F8EAC" }}
-            >
-              {registrationSuccess ? "Register Another Patient" : "Register Online"}
-            </button>
-          ) : (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Full Name *
-                  </label>
-                  <input
-                    value={registrationForm.name}
-                    onChange={e =>
-                      setRegistrationForm(form => ({
-                        ...form,
-                        name: e.target.value,
-                      }))
-                    }
-                    placeholder="Enter your full name"
-                    className="w-full px-4 py-3 rounded-xl border outline-none"
-                    style={{ borderColor: "#C9DEE6" }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Age *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="120"
-                    value={registrationForm.age}
-                    onChange={e =>
-                      setRegistrationForm(form => ({
-                        ...form,
-                        age: e.target.value,
-                      }))
-                    }
-                    placeholder="Enter your age"
-                    className="w-full px-4 py-3 rounded-xl border outline-none"
-                    style={{ borderColor: "#C9DEE6" }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    maxLength={10}
-                    value={registrationForm.phone}
-                    onChange={e =>
-                      setRegistrationForm(form => ({
-                        ...form,
-                        phone: e.target.value.replace(/\D/g, "").slice(0, 10),
-                      }))
-                    }
-                    placeholder="10-digit mobile number"
-                    className="w-full px-4 py-3 rounded-xl border outline-none"
-                    style={{ borderColor: "#C9DEE6" }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Department *
-                  </label>
-                  <select
-                    value={registrationForm.department}
-                    onChange={e => handleDepartmentChange(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border outline-none bg-white"
-                    style={{ borderColor: "#C9DEE6" }}
-                  >
-                    <option value="">Select department</option>
-                    {departments.map(department => {
-                      const hasAvailableDoctor = doctors.some(
-                        doctor =>
-                          doctor.department === department &&
-                          !["on leave", "unavailable"].includes(
-                            String(doctor.status || "").trim().toLowerCase()
-                          )
-                      );
-
-                      return (
-                        <option
-                          key={department}
-                          value={department}
-                          disabled={!hasAvailableDoctor}
-                        >
-                          {department}
-                          {!hasAvailableDoctor
-                            ? " (Department Unavailable - All Doctors on Leave)"
-                            : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-
-                <div className="md:col-span-2">
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Reason for Visit *
-                  </label>
-                  <textarea
-                    value={registrationForm.condition}
-                    onChange={e =>
-                      setRegistrationForm(form => ({
-                        ...form,
-                        condition: e.target.value,
-                      }))
-                    }
-                    rows={3}
-                    placeholder="Briefly describe the reason for your visit"
-                    className="w-full px-4 py-3 rounded-xl border outline-none resize-none"
-                    style={{ borderColor: "#C9DEE6" }}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="p-4 rounded-xl text-sm"
-                style={{
-                  backgroundColor: "#F7FBFC",
-                  color: "#5A7A8A",
-                }}
-              >
-                <span className="font-semibold" style={{ color: "#365766" }}>
-                  Note:
-                </span>{" "}
-                Triage priority is assessed by hospital staff. Online
-                registration starts with the standard non-urgent category.
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={registerOnline}
-                  disabled={registrationLoading}
-                  className="px-6 py-3 rounded-xl font-bold text-white transition-all hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: "#3F8EAC" }}
-                >
-                  {registrationLoading
-                    ? "Registering..."
-                    : "Register & Get Token"}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowRegistration(false);
-                    setRegistrationError("");
-                  }}
-                  disabled={registrationLoading}
-                  className="px-6 py-3 rounded-xl font-bold border transition-all hover:bg-[#F7FBFC] disabled:opacity-60"
-                  style={{
-                    borderColor: "#C9DEE6",
-                    color: "#365766",
-                  }}
                 >
                   Cancel
                 </button>
@@ -3057,9 +3021,9 @@ function ETAPage() {
       try {
         const [queueResponse, analyticsResponse, doctorsResponse] =
           await Promise.all([
-            fetch("http://127.0.0.1:5000/queue"),
-            fetch("http://127.0.0.1:5000/analytics"),
-            fetch("http://127.0.0.1:5000/doctors")
+            fetch("/api/queue"),
+            fetch("/api/analytics"),
+            fetch("/api/doctors")
           ]);
 
         if (!queueResponse.ok || !analyticsResponse.ok || !doctorsResponse.ok) {
@@ -3398,7 +3362,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
   useEffect(() => {
     const loadDoctors = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:5000/doctors");
+        const response = await fetch("/api/doctors");
 
         if (!response.ok) {
           throw new Error("Failed to load doctors");
@@ -3428,7 +3392,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/doctors/${encodeURIComponent(doctor.doctor_id)}/leave`,
+        `/api/doctors/${encodeURIComponent(doctor.doctor_id)}/leave`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3442,7 +3406,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
         throw new Error(result.error || "Unable to update doctor status.");
       }
 
-      const doctorsResponse = await fetch("http://127.0.0.1:5000/doctors", {
+      const doctorsResponse = await fetch("/api/doctors", {
         cache: "no-store",
       });
 
@@ -3707,7 +3671,7 @@ function AnalyticsPage() {
 
   const loadAnalytics = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:5000/analytics");
+      const response = await fetch("/api/analytics");
 
       if (!response.ok) {
         throw new Error("Failed to load analytics");
@@ -4295,15 +4259,24 @@ function AnalyticsPage() {
   );
 }
 
-function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void }) {
+function NavBar({ current, onNav, isAuthenticated, onLogout }: {
+  current: Page;
+  onNav: (p: Page) => void;
+  isAuthenticated: boolean;
+  onLogout: () => void;
+}) {
   const [open, setOpen] = useState(false);
 
   const pages: { id: Page; label: string; Icon: React.ElementType }[] = [
     { id: "landing", label: "Home", Icon: Home },
-    { id: "reception", label: "Reception", Icon: LayoutDashboard },
+    ...(isAuthenticated ? [
+      { id: "reception" as Page, label: "Reception", Icon: LayoutDashboard },
+    ] : []),
     { id: "patient", label: "My Queue", Icon: QrCode },
-    { id: "eta", label: "Analytics & ETA", Icon: Brain },
-    { id: "doctors", label: "Doctors", Icon: Stethoscope },
+    ...(isAuthenticated ? [
+      { id: "eta" as Page, label: "Analytics & ETA", Icon: Brain },
+      { id: "doctors" as Page, label: "Doctors", Icon: Stethoscope },
+    ] : []),
   ];
 
   return (
@@ -4318,16 +4291,17 @@ function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void })
 
         <div className="hidden md:flex items-center gap-1">
           {pages.map(p => (
-            <button
-              key={p.id}
-              onClick={() => onNav(p.id)}
+            <button key={p.id} onClick={() => onNav(p.id)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all"
-              style={current === p.id ? { backgroundColor: "#3F8EAC", color: "white" } : { color: "#5a7a8a" }}
-            >
-              <p.Icon size={15} />
-              {p.label}
+              style={current === p.id ? { backgroundColor: "#3F8EAC", color: "white" } : { color: "#5a7a8a" }}>
+              <p.Icon size={15} /> {p.label}
             </button>
           ))}
+          {isAuthenticated && (
+            <button onClick={onLogout} className="px-3 py-2 text-sm font-semibold text-red-600">
+              Logout
+            </button>
+          )}
         </div>
 
         <button className="md:hidden p-2" onClick={() => setOpen(o => !o)}>
@@ -4338,28 +4312,119 @@ function NavBar({ current, onNav }: { current: Page; onNav: (p: Page) => void })
       {open && (
         <div className="md:hidden border-t border-[#A8CDE5]/20 bg-white/90 backdrop-blur-md px-4 pb-4 pt-2">
           {pages.map(p => (
-            <button key={p.id} onClick={() => { onNav(p.id); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all mb-1" style={current === p.id ? { backgroundColor: "#3F8EAC", color: "white" } : { color: "#5a7a8a" }}>
+            <button key={p.id} onClick={() => { onNav(p.id); setOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all mb-1"
+              style={current === p.id ? { backgroundColor: "#3F8EAC", color: "white" } : { color: "#5a7a8a" }}>
               <p.Icon size={16} /> {p.label}
             </button>
           ))}
+          {isAuthenticated && (
+            <button onClick={() => { setOpen(false); onLogout(); }}
+              className="w-full text-left px-4 py-3 text-sm font-semibold text-red-600">
+              Logout
+            </button>
+          )}
         </div>
       )}
     </nav>
   );
 }
 
+function StaffLoginPage({ onLogin }: { onLogin: () => void }) {
+  const [username, setUsername] = useState("reception");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      onLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to login");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 py-12"
+      style={{ background: "linear-gradient(135deg, #edf7fb, #f8fbfd)" }}>
+      <form onSubmit={handleLogin}
+        className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-[#A8CDE5]/30">
+        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
+          style={{ backgroundColor: "#3F8EAC" }}>
+          <Shield size={27} className="text-white" />
+        </div>
+        <h1 className="text-2xl font-black text-center mb-2" style={{ color: "#283040" }}>
+          Staff Login
+        </h1>
+        <p className="text-sm text-center mb-8" style={{ color: "#5a7a8a" }}>
+          Sign in to access the hospital reception dashboard.
+        </p>
+
+        <label className="block text-sm font-semibold mb-2">Username</label>
+        <input value={username} onChange={e => setUsername(e.target.value)}
+          autoComplete="username" required
+          className="w-full border rounded-xl px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-[#3F8EAC]"
+          placeholder="Enter staff username" />
+
+        <label className="block text-sm font-semibold mb-2">Password</label>
+        <input type="password" value={password}
+          onChange={e => setPassword(e.target.value)}
+          autoComplete="current-password" required
+          className="w-full border rounded-xl px-4 py-3 mb-5 outline-none focus:ring-2 focus:ring-[#3F8EAC]"
+          placeholder="Enter password" />
+
+        {error && <p role="alert" className="text-sm text-red-600 mb-4">{error}</p>}
+
+        <button type="submit" disabled={loading}
+          className="w-full rounded-xl py-3 font-bold text-white disabled:opacity-60"
+          style={{ backgroundColor: "#3F8EAC" }}>
+          {loading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+
 // ─── Root App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [page, setPage] = useState<Page>("landing");
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/patients")
+    fetch("/api/auth/me", { credentials: "include" })
       .then(res => {
-        if (!res.ok) {
-          throw new Error("Failed to load patients");
-        }
+        if (res.ok) setIsAuthenticated(true);
+      })
+      .catch(error => console.error("Session check failed:", error))
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/patients")
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to load patients");
         return res.json();
       })
       .then(data => {
@@ -4369,9 +4434,7 @@ export default function App() {
           doctor: p.doctor_name || p.doctor_id || "Unassigned",
           department: p.department || "General",
           status: p.status as PatientStatus,
-          eta: p.status === "consulting"
-            ? "Now"
-            : `${p.predicted_wait_time ?? 0} min`,
+            eta: p.status === "consulting" ? "Now" : `${p.predicted_wait_time ?? 0} min`,
           isEmergency: Boolean(p.is_emergency),
           waitMinutes: p.predicted_wait_time ?? 0,
           condition: p.condition_name || "General",
@@ -4384,28 +4447,61 @@ export default function App() {
               })
             : "",
         }));
-
         setPatients(loadedPatients);
       })
-      .catch(error => {
-        console.error("Failed to load patients:", error);
-      });
+      .catch(error => console.error("Failed to load patients:", error));
   }, []);
+
+  useEffect(() => {
+    const staffPages: Page[] = ["reception", "eta", "doctors", "analytics"];
+    if (authChecked && !isAuthenticated && staffPages.includes(page)) {
+      setPage("login");
+    }
+  }, [page, isAuthenticated, authChecked]);
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } finally {
+      setIsAuthenticated(false);
+      setPage("landing");
+    }
+  }
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {page !== "landing" && <NavBar current={page} onNav={setPage} />}
-      <div className={page !== "landing" ? "pt-16" : ""}>
+      {page !== "landing" && page !== "login" && (
+        <NavBar
+          current={page}
+          onNav={setPage}
+          isAuthenticated={isAuthenticated}
+          onLogout={handleLogout}
+        />
+      )}
+      <div className={page !== "landing" && page !== "login" ? "pt-16" : ""}>
         {page === "landing" && <LandingPage onNav={setPage} />}
-        {page === "reception" && <ReceptionPage patients={patients} setPatients={setPatients} />}
+        {page === "login" && (
+          <StaffLoginPage onLogin={() => {
+            setIsAuthenticated(true);
+            setPage("reception");
+          }} />
+        )}
+        {page === "reception" && isAuthenticated && (
+          <ReceptionPage patients={patients} setPatients={setPatients} />
+        )}
         {page === "patient" && <PatientPage />}
-        {page === "eta" && (
+        {page === "eta" && isAuthenticated && (
           <>
             <ETAPage />
             <AnalyticsPage />
           </>
         )}
-        {page === "doctors" && <DoctorsPage patients={patients} />}
+        {page === "doctors" && isAuthenticated && (
+          <DoctorsPage patients={patients} />
+        )}
       </div>
     </div>
   );
