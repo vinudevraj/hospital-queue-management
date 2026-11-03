@@ -1,0 +1,378 @@
+/* ==========================================
+   PREMIUM HOSPITAL QUEUE LANDING PAGE
+   ========================================== */
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+.landing-page {
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse at 10% 8%, rgba(168, 205, 229, 0.34), transparent 34%),
+    radial-gradient(ellipse at 92% 30%, rgba(127, 176, 203, 0.16), transparent 30%),
+    #DDEEF8;
+  color: #283040;
+  font-family: Inter, sans-serif;
+}
+
+.landing-page #features,
+.landing-page #how-it-works {
+  scroll-margin-top: 88px;
+}
+
+.landing-page h1,
+.landing-page h2,
+.landing-page h3 {
+  text-wrap: balance;
+}
+
+.landing-page p {
+  text-wrap: pretty;
+}
+
+.landing-page button {
+  cursor: pointer;
+  transition:
+    transform 220ms ease,
+    background-color 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.landing-page button:active {
+  transform: scale(0.98);
+}
+
+.landing-page button:focus-visible,
+.landing-page a:focus-visible {
+  outline: 3px solid rgba(63, 142, 172, 0.45);
+  outline-offset: 4px;
+}
+
+.landing-page nav {
+  border-color: rgba(168, 205, 229, 0.75);
+  box-shadow: 0 5px 25px rgba(40, 48, 64, 0.06);
+}
+
+.landing-page nav button,
+.landing-page nav a {
+  white-space: nowrap;
+}
+
+/* Hero */
+.landing-page main > section:first-child {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 82% 48%, rgba(168, 205, 229, 0.42), transparent 36%);
+}
+
+.landing-page .landing-hero-copy {
+  animation: landingHeroEntrance 850ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+
+@keyframes landingHeroEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-page .landing-hero-copy > div:first-child > span:first-child {
+  animation: landingStatusPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes landingStatusPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(63, 142, 172, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(63, 142, 172, 0);
+  }
+}
+
+/* Dashboard */
+.landing-page .landing-dashboard-float {
+  position: relative;
+  filter: drop-shadow(0 18px 28px rgba(40, 48, 64, 0.07));
+  animation: landingDashboardFloat 7s ease-in-out infinite;
+  will-change: transform;
+}
+
+.landing-page .landing-dashboard-float > div.relative {
+  border-radius: 22px;
+  box-shadow: 0 28px 75px rgba(40, 48, 64, 0.13);
+}
+
+.landing-page .landing-dashboard-float > div.absolute:first-child {
+  animation: landingAmbientOne 8s ease-in-out infinite;
+}
+
+.landing-page .landing-dashboard-float > div.absolute:nth-child(2) {
+  animation: landingAmbientTwo 10s ease-in-out infinite;
+}
+
+@keyframes landingDashboardFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+@keyframes landingAmbientOne {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(12px, -10px); }
+}
+
+@keyframes landingAmbientTwo {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-10px, 9px); }
+}
+
+/* Queue progression visualization */
+.landing-queue-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.landing-queue-line {
+  position: absolute;
+  top: 17px;
+  left: 12%;
+  right: 12%;
+  height: 2px;
+  overflow: hidden;
+  background: #DCEAF2;
+}
+
+.landing-queue-line span {
+  display: block;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(90deg, #7FB0CB, #3F8EAC);
+  animation: landingQueueProgress 4s ease-in-out infinite alternate;
+}
+
+@keyframes landingQueueProgress {
+  from { transform: translateX(-10%); }
+  to { transform: translateX(85%); }
+}
+
+.landing-queue-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #6C8797;
+  font-size: 9px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.landing-queue-node {
+  display: flex;
+  width: 35px;
+  height: 35px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #DCEAF2;
+  border-radius: 12px;
+  background: #FFFFFF;
+  color: #7BABC5;
+  box-shadow: 0 3px 10px rgba(40, 48, 64, 0.05);
+}
+
+.landing-queue-node.is-highlighted {
+  border-color: #3F8EAC;
+  background: #EAF4FA;
+  color: #3F8EAC;
+  box-shadow: 0 0 0 5px rgba(63, 142, 172, 0.09);
+}
+
+/* Scroll reveal */
+.landing-page .landing-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 650ms ease,
+    transform 650ms cubic-bezier(0.2, 0.65, 0.3, 1);
+}
+
+.landing-page .landing-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Feature cards */
+.landing-page #features {
+  border-color: #DCEAF2;
+}
+
+.landing-page .landing-feature-card {
+  min-height: 235px;
+  box-shadow: 0 5px 20px rgba(40, 48, 64, 0.045);
+  isolation: isolate;
+}
+
+.landing-page .landing-feature-card::before {
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  content: "";
+  background: linear-gradient(90deg, #3F8EAC, #A8CDE5);
+  transform: scaleX(0.25);
+  transform-origin: left;
+  transition: transform 350ms ease;
+}
+
+.landing-page .landing-feature-card::after {
+  position: absolute;
+  z-index: -1;
+  right: -42px;
+  bottom: -55px;
+  width: 125px;
+  height: 125px;
+  border-radius: 50%;
+  content: "";
+  background: rgba(221, 238, 248, 0.48);
+  transition: transform 400ms ease;
+}
+
+.landing-page .landing-feature-card:hover {
+  transform: translateY(-7px);
+  border-color: #8DBBD4;
+  box-shadow: 0 18px 38px rgba(40, 48, 64, 0.105);
+}
+
+.landing-page .landing-feature-card:hover::before {
+  transform: scaleX(1);
+}
+
+.landing-page .landing-feature-card:hover::after {
+  transform: scale(1.3);
+}
+
+.landing-page .landing-feature-3::before {
+  background: linear-gradient(90deg, #B74A42, #E5A39B);
+}
+
+.landing-page .landing-feature-4::before {
+  background: linear-gradient(90deg, #527D9C, #A8CDE5);
+}
+
+.landing-page .landing-feature-5::before {
+  background: linear-gradient(90deg, #6C91A8, #C2D9E7);
+}
+
+.landing-page .landing-feature-6::before {
+  background: linear-gradient(90deg, #3F8EAC, #91C8D8);
+}
+
+/* Workflow */
+.landing-page #how-it-works .landing-workflow-step {
+  min-height: 205px;
+  padding: 19px;
+  border: 1px solid rgba(168, 205, 229, 0.72);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 5px 18px rgba(40, 48, 64, 0.035);
+  transition:
+    transform 300ms ease,
+    border-color 300ms ease,
+    box-shadow 300ms ease,
+    background-color 300ms ease;
+}
+
+.landing-page #how-it-works .landing-workflow-step:hover {
+  transform: translateY(-5px);
+  border-color: #7FB0CB;
+  background: #FFFFFF;
+  box-shadow: 0 14px 30px rgba(40, 48, 64, 0.08);
+}
+
+.landing-page .landing-workflow-step > div:first-child > div:first-child {
+  animation: landingWorkflowPulse 4s ease-in-out infinite;
+}
+
+.landing-page .landing-workflow-step:nth-child(2) > div:first-child > div:first-child {
+  animation-delay: 0.6s;
+}
+
+.landing-page .landing-workflow-step:nth-child(3) > div:first-child > div:first-child {
+  animation-delay: 1.2s;
+}
+
+.landing-page .landing-workflow-step:nth-child(4) > div:first-child > div:first-child {
+  animation-delay: 1.8s;
+}
+
+@keyframes landingWorkflowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(63, 142, 172, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(63, 142, 172, 0.09);
+  }
+}
+
+/* Footer */
+.landing-page footer {
+  border-top: 1px solid #DCEAF2;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .landing-page nav > div {
+    height: 64px;
+  }
+
+  .landing-page main > section:first-child {
+    padding-top: 112px;
+  }
+
+  .landing-page .landing-feature-card,
+  .landing-page #how-it-works .landing-workflow-step {
+    min-height: 0;
+  }
+
+  .landing-queue-stage {
+    font-size: 8px;
+  }
+
+  .landing-queue-node {
+    width: 31px;
+    height: 31px;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .landing-page *,
+  .landing-page *::before,
+  .landing-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .landing-page .landing-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
