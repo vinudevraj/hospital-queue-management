@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+import secrets
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pandas as pd
@@ -470,6 +472,91 @@ def get_analytics():
             connection.close()
 
 
+@app.route("/doctors/<doctor_id>/leave", methods=["POST"])
+def update_doctor_leave(doctor_id):
+
+    connection = None
+    cursor = None
+
+    try:
+        data = request.get_json() or {}
+        is_on_leave = data.get("is_on_leave")
+
+        if type(is_on_leave) is not bool:
+            return jsonify({
+                "error": "is_on_leave must be true or false"
+            }), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT doctor_id, status
+            FROM doctors
+            WHERE doctor_id = %s
+            FOR UPDATE
+        """, (doctor_id,))
+
+        doctor = cursor.fetchone()
+
+        if not doctor:
+            return jsonify({"error": "Doctor not found"}), 404
+
+        if is_on_leave:
+            cursor.execute("""
+                SELECT COUNT(*) AS active_patients
+                FROM queue q
+                JOIN patients p ON q.patient_id = p.patient_id
+                WHERE p.doctor_id = %s
+                  AND DATE(p.registered_at) = CURDATE()
+                  AND q.status IN ('waiting', 'consulting')
+            """, (doctor_id,))
+
+            active_count = int(cursor.fetchone()["active_patients"])
+
+            if active_count > 0:
+                return jsonify({
+                    "error": (
+                        "This doctor has active patients. "
+                        "Complete or safely reassign their queue before marking leave."
+                    ),
+                    "active_patients": active_count
+                }), 409
+
+        cursor.execute("""
+            UPDATE doctors
+            SET status = %s
+            WHERE doctor_id = %s
+        """, ("On Leave" if is_on_leave else "Available", doctor_id))
+
+        connection.commit()
+
+        return jsonify({
+            "message": (
+                "Doctor marked On Leave"
+                if is_on_leave
+                else "Doctor marked Available"
+            ),
+            "doctor_id": doctor_id,
+            "status": "On Leave" if is_on_leave else "Available"
+        }), 200
+
+    except mysql.connector.Error as error:
+        if connection:
+            connection.rollback()
+
+        return jsonify({
+            "error": "Database operation failed",
+            "message": str(error)
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+
 @app.route("/doctors", methods=["GET"])
 def get_doctors():
 
@@ -487,6 +574,8 @@ def get_doctors():
                 d.department,
                 d.specialization,
                 CASE
+                    WHEN UPPER(COALESCE(d.status, 'Available')) = 'ON LEAVE'
+                    THEN 'On Leave'
                     WHEN EXISTS (
                         SELECT 1
                         FROM queue q
@@ -624,11 +713,12 @@ def get_patient_by_token(token):
                 WHERE DATE(p.registered_at) = CURDATE()
                   AND q.status IN ("waiting", "consulting")
                   AND p.department = %s
+                  AND p.doctor_id <=> %s
                 ORDER BY
                     q.priority ASC,
                     q.added_at ASC,
                     q.queue_id ASC
-            """, (patient["department"],))
+            """, (patient["department"], patient["doctor_id"]))
 
             department_rows = cursor.fetchall()
 
@@ -644,6 +734,7 @@ def get_patient_by_token(token):
             for row in department_rows:
                 if row["status"] == "consulting":
                     remaining = service_time
+                    remaining_seconds = service_time * 60
 
                     if row["consulting_started_at"]:
                         cursor.execute("""
@@ -668,14 +759,8 @@ def get_patient_by_token(token):
                             remaining_seconds + 59
                         ) // 60
 
-                    consulting_remaining = max(
-                        consulting_remaining,
-                        remaining
-                    )
-                    consulting_remaining_seconds = max(
-                        consulting_remaining_seconds,
-                        remaining_seconds
-                    )
+                    consulting_remaining = max(consulting_remaining, service_time)
+                    consulting_remaining_seconds = max(consulting_remaining_seconds, service_time * 60)
 
                 elif row["status"] == "waiting":
                     waiting_rows.append(row)
@@ -764,10 +849,29 @@ def get_patients():
                 p.status,
                 p.is_emergency,
                 p.registered_at,
-                p.appointment_date
+                p.appointment_date,
+                q.added_at,
+                q.consulting_started_at,
+                CASE
+                    WHEN q.added_at IS NULL THEN NULL
+                    WHEN p.status = 'waiting' THEN
+                        GREATEST(0, TIMESTAMPDIFF(SECOND, q.added_at, NOW()))
+                    WHEN q.consulting_started_at IS NOT NULL THEN
+                        GREATEST(
+                            0,
+                            TIMESTAMPDIFF(
+                                SECOND,
+                                q.added_at,
+                                q.consulting_started_at
+                            )
+                        )
+                    ELSE NULL
+                END AS actual_wait_seconds
             FROM patients p
             LEFT JOIN doctors d
                 ON p.doctor_id = d.doctor_id
+            LEFT JOIN queue q
+                ON p.patient_id = q.patient_id
             WHERE DATE(p.registered_at) = CURDATE()
             ORDER BY p.registered_at ASC, p.patient_id ASC
             LIMIT 100
@@ -781,6 +885,14 @@ def get_patients():
 
             if patient["appointment_date"]:
                 patient["appointment_date"] = patient["appointment_date"].isoformat()
+
+            if patient["added_at"]:
+                patient["added_at"] = patient["added_at"].isoformat()
+
+            if patient["consulting_started_at"]:
+                patient["consulting_started_at"] = (
+                    patient["consulting_started_at"].isoformat()
+                )
 
         return jsonify(patients), 200
 
@@ -809,7 +921,6 @@ def create_patient():
         "age",
         "phone",
         "condition_name",
-        "doctor_id",
         "department",
         "triage_category",
         "predicted_wait_time",
@@ -835,31 +946,76 @@ def create_patient():
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
 
-        cursor.execute("""
-            SELECT doctor_id, doctor_name, department
-            FROM doctors
-            WHERE doctor_id = %s
-        """, (data["doctor_id"],))
-
-        doctor = cursor.fetchone()
-
-        if not doctor:
-            return jsonify({
-                "error": "Doctor not found"
-            }), 404
-
-        doctor_department = str(doctor["department"]).strip()
         selected_department = str(data["department"]).strip()
 
-        if doctor_department.lower() != selected_department.lower():
-            return jsonify({
-                "error": "Doctor does not belong to selected department",
-                "doctor_id": doctor["doctor_id"],
-                "doctor_department": doctor_department,
-                "selected_department": selected_department
-            }), 400
+        # Lock available doctors in the selected department.
+        cursor.execute("""
+            SELECT doctor_id, doctor_name, department, status
+            FROM doctors
+            WHERE LOWER(TRIM(department)) = LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(status, 'Available')))
+                  NOT IN ('ON LEAVE', 'UNAVAILABLE')
+            ORDER BY doctor_id
+            FOR UPDATE
+        """, (selected_department,))
 
-        data["department"] = doctor_department
+        available_doctors = cursor.fetchall()
+
+        if not available_doctors:
+            connection.rollback()
+            return jsonify({
+                "error": "This department is currently unavailable because all doctors are on leave or unavailable."
+            }), 409
+
+        requested_doctor_id = data.get("doctor_id")
+
+        if requested_doctor_id:
+            doctor = next(
+                (
+                    item for item in available_doctors
+                    if item["doctor_id"] == requested_doctor_id
+                ),
+                None
+            )
+
+            if not doctor:
+                connection.rollback()
+                return jsonify({
+                    "error": "Selected doctor is not available in this department."
+                }), 409
+
+        else:
+            # Assign the doctor with the lowest active queue workload.
+            doctor_workloads = []
+
+            for available_doctor in available_doctors:
+                cursor.execute("""
+                    SELECT COUNT(*) AS active_count
+                    FROM patients p
+                    JOIN queue q ON q.patient_id = p.patient_id
+                    WHERE p.doctor_id = %s
+                      AND DATE(p.registered_at) = CURDATE()
+                      AND q.status IN ('waiting', 'consulting')
+                """, (available_doctor["doctor_id"],))
+
+                workload = int(
+                    cursor.fetchone()["active_count"] or 0
+                )
+
+                doctor_workloads.append((
+                    workload,
+                    available_doctor["doctor_id"],
+                    available_doctor
+                ))
+
+            doctor_workloads.sort(
+                key=lambda item: (item[0], item[1])
+            )
+
+            doctor = doctor_workloads[0][2]
+
+        data["doctor_id"] = doctor["doctor_id"]
+        data["department"] = doctor["department"]
 
         cursor.execute("""
             SELECT COALESCE(
@@ -971,6 +1127,666 @@ def create_patient():
             connection.close()
 
 
+
+@app.route("/appointments/slots", methods=["GET"])
+def get_appointment_slots():
+
+    department = request.args.get("department", "").strip()
+    appointment_date = request.args.get("date", "").strip()
+
+    if not department or not appointment_date:
+        return jsonify({
+            "error": "Department and date are required."
+        }), 400
+
+    try:
+        selected_date = datetime.strptime(
+            appointment_date, "%Y-%m-%d"
+        ).date()
+    except ValueError:
+        return jsonify({
+            "error": "Invalid date format. Use YYYY-MM-DD."
+        }), 400
+
+    if selected_date < datetime.now().date():
+        return jsonify({
+            "error": "Appointments cannot be booked for past dates."
+        }), 400
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT department_id, department_name
+            FROM departments
+            WHERE LOWER(TRIM(department_name)) =
+                  LOWER(TRIM(%s))
+        """, (department,))
+
+        department_record = cursor.fetchone()
+
+        if not department_record:
+            return jsonify({
+                "error": "Department not found."
+            }), 404
+
+        department_name = department_record["department_name"]
+
+        cursor.execute("""
+            SELECT COUNT(*) AS available_count
+            FROM doctors
+            WHERE LOWER(TRIM(department)) =
+                  LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(status, 'Available')))
+                  NOT IN ('ON LEAVE', 'UNAVAILABLE')
+        """, (department_name,))
+
+        available_count = cursor.fetchone()["available_count"]
+
+        if not available_count:
+            return jsonify({
+                "error": "No doctors are currently available in this department.",
+                "slots": []
+            }), 409
+
+        now = datetime.now()
+        slots = []
+
+        for hour in range(9, 17):
+            for minute in (0, 30):
+
+                slot_datetime = datetime(
+                    selected_date.year,
+                    selected_date.month,
+                    selected_date.day,
+                    hour,
+                    minute
+                )
+
+                if slot_datetime <= now:
+                    continue
+
+                cursor.execute("""
+                    SELECT COUNT(*) AS booked_count
+                    FROM appointments
+                    WHERE department = %s
+                      AND appointment_datetime = %s
+                      AND status IN ('booked', 'checked_in')
+                """, (department_name, slot_datetime))
+
+                booked_count = int(
+                    cursor.fetchone()["booked_count"] or 0
+                )
+
+                slots.append({
+                    "time": slot_datetime.strftime("%I:%M %p"),
+                    "appointment_datetime": slot_datetime.strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                    "booked": booked_count,
+                    "remaining": max(0, 5 - booked_count),
+                    "available": booked_count < 5
+                })
+
+        return jsonify({
+            "department": department_name,
+            "date": appointment_date,
+            "slot_duration_minutes": 30,
+            "maximum_bookings_per_slot": 5,
+            "slots": slots
+        })
+
+    except mysql.connector.Error as error:
+        print("APPOINTMENT SLOT ERROR:", error)
+
+        return jsonify({
+            "error": "Unable to retrieve appointment slots."
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+
+@app.route("/appointments", methods=["POST"])
+def create_appointment():
+
+    data = request.get_json() or {}
+
+    required_fields = [
+        "patient_name",
+        "age",
+        "phone",
+        "condition_name",
+        "department",
+        "appointment_datetime"
+    ]
+
+    missing_fields = [
+        field for field in required_fields
+        if field not in data or data[field] is None
+        or str(data[field]).strip() == ""
+    ]
+
+    if missing_fields:
+        return jsonify({
+            "error": "Missing required fields",
+            "fields": missing_fields
+        }), 400
+
+    try:
+        age = int(data["age"])
+    except (ValueError, TypeError):
+        return jsonify({"error": "Age must be a valid number."}), 400
+
+    if age < 0 or age > 120:
+        return jsonify({"error": "Age must be between 0 and 120."}), 400
+
+    phone = str(data["phone"]).strip()
+
+    if not phone.isdigit() or len(phone) != 10:
+        return jsonify({
+            "error": "Phone number must contain exactly 10 digits."
+        }), 400
+
+    patient_name = str(data["patient_name"]).strip()
+    condition_name = str(data["condition_name"]).strip()
+    department = str(data["department"]).strip()
+
+    if not patient_name or len(patient_name) > 100:
+        return jsonify({"error": "Enter a valid patient name."}), 400
+
+    if not condition_name or len(condition_name) > 255:
+        return jsonify({"error": "Enter a valid reason for visit."}), 400
+
+    try:
+        appointment_datetime = datetime.strptime(
+            str(data["appointment_datetime"]).strip(),
+            "%Y-%m-%d %H:%M:%S"
+        )
+    except ValueError:
+        return jsonify({
+            "error": "Invalid appointment date or time."
+        }), 400
+
+    now = datetime.now()
+
+    if appointment_datetime <= now:
+        return jsonify({
+            "error": "Appointment time must be in the future."
+        }), 400
+
+    if (
+        appointment_datetime.hour < 9
+        or appointment_datetime.hour >= 17
+        or appointment_datetime.minute not in (0, 30)
+        or appointment_datetime.second != 0
+    ):
+        return jsonify({
+            "error": "Choose a valid 30-minute slot between 9 AM and 5 PM."
+        }), 400
+
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # Lock the department row to prevent simultaneous overbooking.
+        cursor.execute("""
+            SELECT department_id, department_name
+            FROM departments
+            WHERE LOWER(TRIM(department_name)) =
+                  LOWER(TRIM(%s))
+            FOR UPDATE
+        """, (department,))
+
+        department_record = cursor.fetchone()
+
+        if not department_record:
+            connection.rollback()
+            return jsonify({"error": "Department not found."}), 404
+
+        department_name = department_record["department_name"]
+
+        cursor.execute("""
+            SELECT COUNT(*) AS available_count
+            FROM doctors
+            WHERE LOWER(TRIM(department)) =
+                  LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(status, 'Available')))
+                  NOT IN ('ON LEAVE', 'UNAVAILABLE')
+        """, (department_name,))
+
+        available_count = int(
+            cursor.fetchone()["available_count"] or 0
+        )
+
+        if available_count == 0:
+            connection.rollback()
+            return jsonify({
+                "error": "No doctors are currently available in this department."
+            }), 409
+
+        cursor.execute("""
+            SELECT COUNT(*) AS booked_count
+            FROM appointments
+            WHERE department = %s
+              AND appointment_datetime = %s
+              AND status IN ('booked', 'checked_in')
+        """, (department_name, appointment_datetime))
+
+        booked_count = int(
+            cursor.fetchone()["booked_count"] or 0
+        )
+
+        if booked_count >= 5:
+            connection.rollback()
+            return jsonify({
+                "error": "This appointment slot is fully booked.",
+                "remaining": 0
+            }), 409
+
+        booking_ref = "APT" + secrets.token_hex(5).upper()
+
+        cursor.execute("""
+            INSERT INTO appointments (
+                booking_ref,
+                patient_name,
+                age,
+                phone,
+                condition_name,
+                department,
+                appointment_datetime,
+                status
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'booked')
+        """, (
+            booking_ref,
+            patient_name,
+            age,
+            phone,
+            condition_name,
+            department_name,
+            appointment_datetime
+        ))
+
+        appointment_id = cursor.lastrowid
+        connection.commit()
+
+        return jsonify({
+            "message": "Appointment booked successfully.",
+            "appointment_id": appointment_id,
+            "booking_ref": booking_ref,
+            "patient_name": patient_name,
+            "department": department_name,
+            "appointment_datetime": appointment_datetime.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "status": "booked",
+            "queue_token": None,
+            "remaining_slots": 4 - booked_count
+        }), 201
+
+    except mysql.connector.Error as error:
+        if connection:
+            connection.rollback()
+
+        print("APPOINTMENT BOOKING ERROR:", error)
+
+        return jsonify({
+            "error": "Unable to book appointment."
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+
+@app.route("/appointments", methods=["GET"])
+def get_appointments():
+    connection = None
+    cursor = None
+
+    try:
+        appointment_date = request.args.get(
+            "date",
+            datetime.now().strftime("%Y-%m-%d")
+        )
+        department = request.args.get("department")
+        status = request.args.get("status")
+
+        try:
+            datetime.strptime(appointment_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({
+                "error": "Invalid date. Use YYYY-MM-DD."
+            }), 400
+
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        query = """
+            SELECT
+                a.appointment_id,
+                a.booking_ref,
+                a.patient_name,
+                a.age,
+                a.phone,
+                a.condition_name,
+                a.department,
+                a.appointment_datetime,
+                a.status,
+                a.doctor_id,
+                d.doctor_name,
+                a.patient_id,
+                a.created_at
+            FROM appointments a
+            LEFT JOIN doctors d
+                ON a.doctor_id = d.doctor_id
+            WHERE DATE(a.appointment_datetime) = %s
+        """
+
+        params = [appointment_date]
+
+        if department:
+            query += " AND a.department = %s"
+            params.append(department)
+
+        if status:
+            query += " AND a.status = %s"
+            params.append(status)
+
+        query += " ORDER BY a.appointment_datetime ASC"
+
+        cursor.execute(query, tuple(params))
+        appointments = cursor.fetchall()
+
+        for appointment in appointments:
+            if appointment.get("appointment_datetime"):
+                appointment["appointment_datetime"] = (
+                    appointment["appointment_datetime"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+
+            if appointment.get("created_at"):
+                appointment["created_at"] = (
+                    appointment["created_at"].strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                )
+
+        return jsonify({
+            "appointments": appointments,
+            "total": len(appointments),
+            "date": appointment_date
+        }), 200
+
+    except mysql.connector.Error as error:
+        print("GET APPOINTMENTS ERROR:", error)
+        return jsonify({
+            "error": "Unable to retrieve appointments."
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+
+@app.route("/appointments/<int:appointment_id>/check-in", methods=["POST"])
+def check_in_appointment(appointment_id):
+    connection = None
+    cursor = None
+
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+
+        # Lock the appointment to prevent duplicate check-ins.
+        cursor.execute("""
+            SELECT *
+            FROM appointments
+            WHERE appointment_id = %s
+            FOR UPDATE
+        """, (appointment_id,))
+
+        appointment = cursor.fetchone()
+
+        if not appointment:
+            connection.rollback()
+            return jsonify({"error": "Appointment not found."}), 404
+
+        if appointment["status"] != "booked":
+            connection.rollback()
+            return jsonify({
+                "error": "Only booked appointments can be checked in.",
+                "status": appointment["status"]
+            }), 409
+
+        now = datetime.now()
+
+        if appointment["appointment_datetime"].date() != now.date():
+            connection.rollback()
+            return jsonify({
+                "error": "Check-in is allowed only on the appointment date.",
+                "appointment_date": appointment[
+                    "appointment_datetime"
+                ].strftime("%Y-%m-%d")
+            }), 409
+
+        department = appointment["department"]
+
+        # Lock available doctors in this department.
+        cursor.execute("""
+            SELECT doctor_id, doctor_name, department, status
+            FROM doctors
+            WHERE LOWER(TRIM(department)) = LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(status, 'Available')))
+                  NOT IN ('ON LEAVE', 'UNAVAILABLE')
+            ORDER BY doctor_id
+            FOR UPDATE
+        """, (department,))
+
+        available_doctors = cursor.fetchall()
+
+        if not available_doctors:
+            connection.rollback()
+            return jsonify({
+                "error": "No available doctors in this department."
+            }), 409
+
+        # Assign the doctor with the lowest active queue workload.
+        doctor_workloads = []
+
+        for doctor in available_doctors:
+            cursor.execute("""
+                SELECT COUNT(*) AS active_count
+                FROM patients p
+                JOIN queue q ON q.patient_id = p.patient_id
+                WHERE p.doctor_id = %s
+                  AND DATE(p.registered_at) = CURDATE()
+                  AND q.status IN ('waiting', 'consulting')
+            """, (doctor["doctor_id"],))
+
+            workload = int(cursor.fetchone()["active_count"] or 0)
+
+            doctor_workloads.append((
+                workload,
+                doctor["doctor_id"],
+                doctor
+            ))
+
+        doctor_workloads.sort(key=lambda item: (item[0], item[1]))
+        selected_doctor = doctor_workloads[0][2]
+
+        # Generate the same age groups used by the frontend.
+        age = int(appointment["age"])
+
+        if age <= 17:
+            age_group = "Pediatric (0-17)"
+        elif age <= 35:
+            age_group = "Young Adult (18-35)"
+        elif age <= 60:
+            age_group = "Adult (36-60)"
+        else:
+            age_group = "Senior (61+)"
+
+        triage_category = "Non-urgent"
+
+        # Use the exact feature format expected by the trained model.
+        prediction_input = pd.DataFrame([{
+            "AgeGroup": age_group,
+            "Department": department,
+            "AppointmentType": "New Patient",
+            "ArrivalMethod": "Scheduled",
+            "TriageCategory": triage_category,
+            "FacilityOccupancyRate": 0.30,
+            "ProvidersOnShift": 1,
+            "NursesOnShift": 2,
+            "StaffToPatientRatio": 0.5,
+            "ArrivalHour": now.hour,
+            "DayOfWeek": now.strftime("%a"),
+            "IsWeekend": now.weekday() >= 5,
+            "Month": now.strftime("%b")
+        }])
+
+        prediction = model.predict(prediction_input)[0]
+        predicted_wait_time = max(0, round(float(prediction)))
+
+        # Generate a patient token using the existing token convention.
+        cursor.execute("""
+            SELECT COALESCE(
+                MAX(CAST(SUBSTRING(token, 2) AS UNSIGNED)),
+                0
+            ) AS last_number
+            FROM patients
+            WHERE token REGEXP '^T[0-9]+$'
+        """)
+
+        last_number = int(cursor.fetchone()["last_number"] or 0)
+        token = f"T{last_number + 1:03d}"
+
+        # Create the patient record.
+        cursor.execute("""
+            INSERT INTO patients (
+                token,
+                patient_name,
+                age,
+                phone,
+                condition_name,
+                doctor_id,
+                department,
+                triage_category,
+                predicted_wait_time,
+                status,
+                is_emergency,
+                appointment_date
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                'waiting', 0, %s
+            )
+        """, (
+            token,
+            appointment["patient_name"],
+            age,
+            appointment["phone"],
+            appointment["condition_name"],
+            selected_doctor["doctor_id"],
+            department,
+            triage_category,
+            predicted_wait_time,
+            now
+        ))
+
+        patient_id = cursor.lastrowid
+
+        # Use the existing queue priority convention.
+        cursor.execute("""
+            INSERT INTO queue (
+                patient_id,
+                token,
+                priority,
+                queue_position,
+                status,
+                predicted_wait_time
+            )
+            VALUES (%s, %s, 5, 1, 'waiting', %s)
+        """, (
+            patient_id,
+            token,
+            predicted_wait_time
+        ))
+
+        # Link the appointment to its patient and assigned doctor.
+        cursor.execute("""
+            UPDATE appointments
+            SET status = 'checked_in',
+                doctor_id = %s,
+                patient_id = %s
+            WHERE appointment_id = %s
+              AND status = 'booked'
+              AND patient_id IS NULL
+        """, (
+            selected_doctor["doctor_id"],
+            patient_id,
+            appointment_id
+        ))
+
+        if cursor.rowcount != 1:
+            raise Exception("Appointment status could not be updated.")
+
+        connection.commit()
+
+        return jsonify({
+            "message": "Appointment checked in successfully.",
+            "appointment_id": appointment_id,
+            "booking_ref": appointment["booking_ref"],
+            "patient_id": patient_id,
+            "token": token,
+            "doctor_id": selected_doctor["doctor_id"],
+            "doctor_name": selected_doctor["doctor_name"],
+            "department": department,
+            "predicted_wait_time": predicted_wait_time,
+            "status": "checked_in"
+        }), 200
+
+    except Exception as error:
+        if connection:
+            connection.rollback()
+
+        print("APPOINTMENT CHECK-IN ERROR:", error)
+
+        return jsonify({
+            "error": "Unable to check in appointment."
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
 @app.route("/queue", methods=["GET"])
 def get_queue():
     conn = get_db_connection()
@@ -1027,23 +1843,22 @@ def get_queue():
 
     default_service_time = 20
 
-    # Build live queue state independently for each department.
-    # The current consultation is determined first so that its
-    # remaining time is always included for waiting patients,
-    # regardless of queue priority ordering.
-    department_state = {}
+    # Build an independent live queue for each doctor and department.
+    # A doctor's patients must never affect another doctor's ETA.
+    doctor_queue_state = {}
 
     for row in rows:
         department = row["department"] or "General"
+        doctor_key = (department, row["doctor_id"])
 
-        if department not in department_state:
-            department_state[department] = {
+        if doctor_key not in doctor_queue_state:
+            doctor_queue_state[doctor_key] = {
                 "consulting_remaining": 0,
                 "consulting_remaining_seconds": 0,
                 "waiting": []
             }
 
-        state = department_state[department]
+        state = doctor_queue_state[doctor_key]
 
         service_time = department_service_times.get(
             department,
@@ -1080,14 +1895,8 @@ def get_queue():
             row["live_eta_minutes"] = remaining
             row["live_eta_seconds"] = remaining_seconds
 
-            state["consulting_remaining"] = max(
-                state["consulting_remaining"],
-                remaining
-            )
-            state["consulting_remaining_seconds"] = max(
-                state["consulting_remaining_seconds"],
-                remaining_seconds
-            )
+            state["consulting_remaining"] = max(state["consulting_remaining"], service_time)
+            state["consulting_remaining_seconds"] = max(state["consulting_remaining_seconds"], service_time * 60)
 
         else:
             state["waiting"].append(row)
@@ -1099,7 +1908,8 @@ def get_queue():
 
     for row in rows:
         department = row["department"] or "General"
-        state = department_state[department]
+        doctor_key = (department, row["doctor_id"])
+        state = doctor_queue_state[doctor_key]
 
         if row["status"] == "waiting":
             waiting_count += 1

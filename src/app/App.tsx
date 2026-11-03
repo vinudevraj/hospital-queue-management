@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowRight, Star, TrendingUp, Zap, Shield,
   Heart, Stethoscope, Brain, Timer, QrCode,
   SkipForward, UserPlus, Volume2, Download,
-  Menu, X, BarChart2, Check, Home, LayoutDashboard,
+  Menu, X, BarChart2, Check, Home, LayoutDashboard, Calendar,
   Wifi, RefreshCw,
 } from "lucide-react";
 import {
@@ -29,6 +29,7 @@ interface Patient {
   waitMinutes: number;
   liveEta?: number;
   liveEtaSeconds?: number;
+  actualWaitSeconds?: number;
   condition: string;
   phone: string;
   age: number;
@@ -711,8 +712,25 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
       })
       .then(data => {
         setDoctors(data);
-        if (data.length > 0) {
-          setForm(f => ({ ...f, doctor: data[0].doctor_id }));
+
+        const eligibleDoctors = data.filter(
+          doctor =>
+            !["on leave", "unavailable"].includes(
+              String(doctor.status || "").trim().toLowerCase()
+            )
+        );
+
+        const initialDoctor =
+          eligibleDoctors.find(
+            doctor => doctor.department === "Internal Medicine"
+          ) || eligibleDoctors[0];
+
+        if (initialDoctor) {
+          setForm(f => ({
+            ...f,
+            department: initialDoctor.department,
+            doctor: initialDoctor.doctor_id,
+          }));
         }
       })
       .catch(error => {
@@ -786,6 +804,10 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
             waitMinutes: dbPatient.predicted_wait_time ?? 0,
             liveEta: livePatient?.live_eta_minutes,
             liveEtaSeconds: livePatient?.live_eta_seconds,
+            actualWaitSeconds:
+              dbPatient.actual_wait_seconds == null
+                ? undefined
+                : Number(dbPatient.actual_wait_seconds),
             condition: dbPatient.condition_name || "General",
             phone: dbPatient.phone || "",
             age: dbPatient.age || 0,
@@ -833,30 +855,38 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
         return orderedPatients.map(patient => {
           const current = currentByToken.get(patient.token);
+          const updatedPatient = { ...patient };
 
           if (
             current &&
             current.status === "waiting" &&
-            patient.status === "waiting" &&
-            current.liveEtaSeconds !== undefined &&
-            patient.liveEtaSeconds !== undefined
+            patient.status === "waiting"
           ) {
-            return {
-              ...patient,
-              liveEtaSeconds: Math.min(
+            if (
+              current.actualWaitSeconds !== undefined &&
+              patient.actualWaitSeconds !== undefined
+            ) {
+              updatedPatient.actualWaitSeconds = Math.max(
+                current.actualWaitSeconds,
+                patient.actualWaitSeconds
+              );
+            }
+
+            if (
+              current.liveEtaSeconds !== undefined &&
+              patient.liveEtaSeconds !== undefined
+            ) {
+              updatedPatient.liveEtaSeconds = Math.min(
                 current.liveEtaSeconds,
                 patient.liveEtaSeconds
-              ),
-              liveEta: Math.ceil(
-                Math.min(
-                  current.liveEtaSeconds,
-                  patient.liveEtaSeconds
-                ) / 60
-              ),
-            };
+              );
+              updatedPatient.liveEta = Math.ceil(
+                updatedPatient.liveEtaSeconds / 60
+              );
+            }
           }
 
-          return patient;
+          return updatedPatient;
         });
       });
     } catch (error) {
@@ -882,11 +912,18 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
     const countdown = setInterval(() => {
       setPatients(current =>
         current.map(patient => {
-          if (
-            patient.status !== "waiting" ||
-            patient.liveEtaSeconds === undefined
-          ) {
+          if (patient.status !== "waiting") {
             return patient;
+          }
+
+          const nextActualWaitSeconds =
+            (patient.actualWaitSeconds ?? 0) + 1;
+
+          if (patient.liveEtaSeconds === undefined) {
+            return {
+              ...patient,
+              actualWaitSeconds: nextActualWaitSeconds,
+            };
           }
 
           const nextSeconds = Math.max(
@@ -896,6 +933,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
           return {
             ...patient,
+            actualWaitSeconds: nextActualWaitSeconds,
             liveEtaSeconds: nextSeconds,
             liveEta: Math.ceil(nextSeconds / 60),
           };
@@ -1148,14 +1186,6 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         0,
         Math.round(predictionData.predicted_wait_time_minutes)
       );
-
-      const selectedDoctor = doctors.find(
-        doctor => doctor.doctor_id === form.doctor
-      );
-
-      if (!selectedDoctor) {
-        throw new Error("Doctor not found");
-      }
 
       const patientResponse = await fetch(
         "http://127.0.0.1:5000/patients",
@@ -1462,7 +1492,11 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                   onChange={e => {
                     const selectedDepartment = e.target.value;
                     const selectedDoctor = doctors.find(
-                      doctor => doctor.department === selectedDepartment
+                      doctor =>
+                        doctor.department === selectedDepartment &&
+                        !["on leave", "unavailable"].includes(
+                          String(doctor.status || "").trim().toLowerCase()
+                        )
                     );
 
                     setForm(f => ({
@@ -1479,11 +1513,26 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                   }}
                 >
                   {[...new Set(doctors.map(doctor => doctor.department))].map(
-                    department => (
-                      <option key={department} value={department}>
-                        {department}
-                      </option>
-                    )
+                    department => {
+                      const hasAvailableDoctor = doctors.some(
+                        doctor =>
+                          doctor.department === department &&
+                          !["on leave", "unavailable"].includes(
+                            String(doctor.status || "").trim().toLowerCase()
+                          )
+                      );
+
+                      return (
+                        <option
+                          key={department}
+                          value={department}
+                          disabled={!hasAvailableDoctor}
+                        >
+                          {department}
+                          {!hasAvailableDoctor ? " (Department Unavailable)" : ""}
+                        </option>
+                      );
+                    }
                   )}
                 </select>
               </div>
@@ -1518,7 +1567,16 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                       doctor: e.target.value,
                     }))
                   }
-                  disabled={doctorsLoading || doctors.length === 0}
+                  disabled={
+                    doctorsLoading ||
+                    !doctors.some(
+                      doctor =>
+                        doctor.department === form.department &&
+                        !["on leave", "unavailable"].includes(
+                          String(doctor.status || "").trim().toLowerCase()
+                        )
+                    )
+                  }
                   className="w-full mt-1.5 px-4 py-3 rounded-xl text-sm outline-none"
                   style={{
                     border: "1.5px solid rgba(168,205,229,0.5)",
@@ -1529,12 +1587,22 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                   {doctorsLoading ? (
                     <option>Loading doctors...</option>
                   ) : doctors.filter(
-                      doctor => doctor.department === form.department
+                      doctor =>
+                        doctor.department === form.department &&
+                        !["on leave", "unavailable"].includes(
+                          String(doctor.status || "").trim().toLowerCase()
+                        )
                     ).length === 0 ? (
-                    <option value="">No doctors available</option>
+                    <option value="">Department unavailable - all doctors on leave</option>
                   ) : (
                     doctors
-                      .filter(doctor => doctor.department === form.department)
+                      .filter(
+                        doctor =>
+                          doctor.department === form.department &&
+                          !["on leave", "unavailable"].includes(
+                            String(doctor.status || "").trim().toLowerCase()
+                          )
+                      )
                       .map(doctor => (
                         <option key={doctor.doctor_id} value={doctor.doctor_id}>
                           {doctor.doctor_id} — {doctor.doctor_name}
@@ -1576,6 +1644,27 @@ function PatientPage() {
   const [registrationError, setRegistrationError] = useState("");
   const [registrationSuccess, setRegistrationSuccess] = useState("");
 
+  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentError, setAppointmentError] = useState("");
+  const [appointmentSuccess, setAppointmentSuccess] = useState("");
+  const [appointmentBookingRef, setAppointmentBookingRef] = useState("");
+  const [appointmentSlots, setAppointmentSlots] = useState<any[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+
+  const [appointmentForm, setAppointmentForm] = useState({
+    name: "",
+    age: "",
+    phone: "",
+    condition: "",
+    department: "",
+    date: new Date().getFullYear() + "-" +
+      String(new Date().getMonth() + 1).padStart(2, "0") + "-" +
+      String(new Date().getDate()).padStart(2, "0"),
+    time: "",
+  });
+
+
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
 
@@ -1584,7 +1673,6 @@ function PatientPage() {
     age: "",
     phone: "",
     department: "",
-    doctor: "",
     condition: "",
   });
 
@@ -1620,24 +1708,168 @@ function PatientPage() {
       });
   }, []);
 
-  const availableDoctors = doctors.filter(
-    doctor =>
-      doctor.department === registrationForm.department &&
-      doctor.status !== "Unavailable"
-  );
-
   const handleDepartmentChange = (department: string) => {
-    const firstDoctor = doctors.find(
-      doctor =>
-        doctor.department === department &&
-        doctor.status !== "Unavailable"
-    );
-
     setRegistrationForm(form => ({
       ...form,
       department,
-      doctor: firstDoctor?.doctor_id || "",
     }));
+  };
+
+  const loadAppointmentSlots = async (
+    department: string,
+    date: string
+  ) => {
+    if (!department || !date) {
+      setAppointmentSlots([]);
+      return;
+    }
+
+    setSlotsLoading(true);
+    setAppointmentError("");
+    setAppointmentSlots([]);
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:5000/appointments/slots?department=${encodeURIComponent(department)}&date=${encodeURIComponent(date)}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to load appointment slots."
+        );
+      }
+
+      setAppointmentSlots(data.slots || []);
+    } catch (err: any) {
+      setAppointmentError(
+        err.message || "Unable to retrieve available slots."
+      );
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setAppointmentForm(form => ({
+      ...form,
+      time: "",
+    }));
+
+    if (appointmentForm.department && appointmentForm.date) {
+      loadAppointmentSlots(
+        appointmentForm.department,
+        appointmentForm.date
+      );
+    } else {
+      setAppointmentSlots([]);
+    }
+  }, [appointmentForm.department, appointmentForm.date]);
+
+  const bookAppointment = async () => {
+    setAppointmentError("");
+    setAppointmentSuccess("");
+    setAppointmentBookingRef("");
+
+    const name = appointmentForm.name.trim();
+    const age = Number(appointmentForm.age);
+    const phone = appointmentForm.phone.replace(/\\D/g, "");
+    const condition = appointmentForm.condition.trim();
+    const department = appointmentForm.department;
+    const date = appointmentForm.date;
+    const time = appointmentForm.time;
+
+    if (!name || !appointmentForm.age || !phone ||
+        !condition || !department || !date || !time) {
+      setAppointmentError("Please complete all appointment fields.");
+      return;
+    }
+
+    if (!Number.isInteger(age) || age < 0 || age > 120) {
+      setAppointmentError("Please enter a valid age.");
+      return;
+    }
+
+    if (!/^\\d{10}$/.test(phone)) {
+      setAppointmentError("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
+    const selectedSlot = appointmentSlots.find(
+      slot => slot.time === time && slot.available
+    );
+
+    if (!selectedSlot) {
+      setAppointmentError("Please select an available appointment slot.");
+      return;
+    }
+
+    setAppointmentLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:5000/appointments",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            patient_name: name,
+            age,
+            phone,
+            condition_name: condition,
+            department,
+            appointment_datetime: selectedSlot.appointment_datetime,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Unable to book appointment."
+        );
+      }
+
+      setAppointmentBookingRef(data.booking_ref || "");
+      setAppointmentSuccess(
+        "Your appointment has been booked successfully."
+      );
+
+      setAppointmentSlots(current =>
+        current.map(slot =>
+          slot.time === time
+            ? {
+                ...slot,
+                booked: slot.booked + 1,
+                remaining: Math.max(0, slot.remaining - 1),
+                available: slot.remaining - 1 > 0,
+              }
+            : slot
+        )
+      );
+
+      setAppointmentForm({
+        name: "",
+        age: "",
+        phone: "",
+        condition: "",
+        department: "",
+        date: new Date().getFullYear() + "-" +
+          String(new Date().getMonth() + 1).padStart(2, "0") + "-" +
+          String(new Date().getDate()).padStart(2, "0"),
+        time: "",
+      });
+    } catch (err: any) {
+      setAppointmentError(
+        err.message || "Unable to book appointment."
+      );
+    } finally {
+      setAppointmentLoading(false);
+    }
   };
 
   const registerOnline = async () => {
@@ -1648,10 +1880,9 @@ function PatientPage() {
     const age = Number(registrationForm.age);
     const phone = registrationForm.phone.trim();
     const department = registrationForm.department;
-    const doctorId = registrationForm.doctor;
     const condition = registrationForm.condition.trim();
 
-    if (!name || !age || !phone || !department || !doctorId || !condition) {
+    if (!name || !age || !phone || !department || !condition) {
       setRegistrationError("Please complete all required fields.");
       return;
     }
@@ -1730,7 +1961,6 @@ function PatientPage() {
             age,
             phone: phone.replace(/\D/g, ""),
             condition_name: condition,
-            doctor_id: doctorId,
             department,
             triage_category: "Non-urgent",
             predicted_wait_time: predictedWaitTime,
@@ -1761,7 +1991,6 @@ function PatientPage() {
         age: "",
         phone: "",
         department: "",
-        doctor: "",
         condition: "",
       });
 
@@ -1938,6 +2167,287 @@ function PatientPage() {
             borderColor: "#D9EAF0",
           }}
         >
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar
+                  className="w-5 h-5"
+                  style={{ color: "#3F8EAC" }}
+                />
+                <h2 className="text-lg font-bold" style={{ color: "#173B4D" }}>
+                  Book an Appointment
+                </h2>
+              </div>
+              <p className="text-sm" style={{ color: "#7A929E" }}>
+                Schedule a hospital visit in advance by choosing a date and time.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowAppointmentForm(value => !value);
+                setAppointmentError("");
+              }}
+              className="px-5 py-2.5 rounded-xl font-bold text-white hover:opacity-90"
+              style={{ backgroundColor: "#3F8EAC" }}
+            >
+              {showAppointmentForm ? "Close Form" : "Book Now"}
+            </button>
+          </div>
+
+          {appointmentSuccess && (
+            <div
+              className="mb-4 p-4 rounded-xl border"
+              style={{
+                backgroundColor: "#EFFAF3",
+                borderColor: "#B9E4C7",
+                color: "#287A43",
+              }}
+            >
+              <div className="font-bold">Appointment Confirmed</div>
+              <p className="text-sm mt-1">{appointmentSuccess}</p>
+              <p className="text-sm mt-2">
+                Booking Reference:{" "}
+                <strong>{appointmentBookingRef}</strong>
+              </p>
+              <p className="text-xs mt-2">
+                Please keep this reference. You must check in at the hospital
+                on your appointment date to enter the live queue.
+              </p>
+            </div>
+          )}
+
+          {appointmentError && (
+            <div
+              className="mb-4 p-4 rounded-xl text-sm"
+              style={{ backgroundColor: "#FDECEC", color: "#A33A35" }}
+            >
+              {appointmentError}
+            </div>
+          )}
+
+          {showAppointmentForm && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Full Name *
+                  </label>
+                  <input
+                    value={appointmentForm.name}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      name: e.target.value,
+                    }))}
+                    placeholder="Enter your full name"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Age *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    value={appointmentForm.age}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      age: e.target.value,
+                    }))}
+                    placeholder="Enter your age"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={appointmentForm.phone}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      phone: e.target.value.replace(/\D/g, "").slice(0, 10),
+                    }))}
+                    placeholder="10-digit mobile number"
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Department *
+                  </label>
+                  <select
+                    value={appointmentForm.department}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      department: e.target.value,
+                    }))}
+                    className="w-full px-4 py-3 rounded-xl border outline-none bg-white"
+                    style={{ borderColor: "#C9DEE6" }}
+                  >
+                    <option value="">Select department</option>
+                    {departments.map(department => {
+                      const hasAvailableDoctor = doctors.some(
+                        doctor =>
+                          doctor.department === department &&
+                          !["on leave", "unavailable"].includes(
+                            String(doctor.status || "").trim().toLowerCase()
+                          )
+                      );
+
+                      return (
+                        <option
+                          key={department}
+                          value={department}
+                          disabled={!hasAvailableDoctor}
+                        >
+                          {department}
+                          {!hasAvailableDoctor ? " (Unavailable)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Appointment Date *
+                  </label>
+                  <input
+                    type="date"
+                    min={(() => {
+                      const today = new Date();
+                      return today.getFullYear() + "-" +
+                        String(today.getMonth() + 1).padStart(2, "0") + "-" +
+                        String(today.getDate()).padStart(2, "0");
+                    })()}
+                    value={appointmentForm.date}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      date: e.target.value,
+                    }))}
+                    className="w-full px-4 py-3 rounded-xl border outline-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: "#365766" }}>
+                    Reason for Visit *
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={appointmentForm.condition}
+                    onChange={e => setAppointmentForm(form => ({
+                      ...form,
+                      condition: e.target.value,
+                    }))}
+                    placeholder="Briefly describe the reason for your visit"
+                    className="w-full px-4 py-3 rounded-xl border outline-none resize-none"
+                    style={{ borderColor: "#C9DEE6" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-3" style={{ color: "#365766" }}>
+                  Available Time Slots *
+                </label>
+
+                {!appointmentForm.department ? (
+                  <p className="text-sm" style={{ color: "#7A929E" }}>
+                    Select a department to view available slots.
+                  </p>
+                ) : slotsLoading ? (
+                  <p className="text-sm" style={{ color: "#3F8EAC" }}>
+                    Loading available slots...
+                  </p>
+                ) : appointmentSlots.length === 0 ? (
+                  <p className="text-sm" style={{ color: "#7A929E" }}>
+                    No available slots for this selection.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {appointmentSlots.map(slot => (
+                      <button
+                        key={slot.appointment_datetime}
+                        type="button"
+                        disabled={!slot.available}
+                        onClick={() => setAppointmentForm(form => ({
+                          ...form,
+                          time: slot.time,
+                        }))}
+                        className="p-3 rounded-xl border text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          borderColor: appointmentForm.time === slot.time
+                            ? "#3F8EAC"
+                            : "#C9DEE6",
+                          backgroundColor: appointmentForm.time === slot.time
+                            ? "#E8F4F8"
+                            : "white",
+                          color: "#365766",
+                        }}
+                      >
+                        <div className="font-bold text-sm">{slot.time}</div>
+                        <div className="text-xs mt-1">
+                          {slot.available
+                            ? `${slot.remaining} seats left`
+                            : "Fully booked"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs mt-2" style={{ color: "#7A929E" }}>
+                  Each slot is 30 minutes with a maximum of 5 bookings.
+                  Booking hours: 9:00 AM–5:00 PM.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={bookAppointment}
+                  disabled={appointmentLoading || slotsLoading}
+                  className="px-6 py-3 rounded-xl font-bold text-white hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: "#3F8EAC" }}
+                >
+                  {appointmentLoading ? "Booking..." : "Confirm Appointment"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowAppointmentForm(false);
+                    setAppointmentError("");
+                  }}
+                  disabled={appointmentLoading}
+                  className="px-6 py-3 rounded-xl font-bold border"
+                  style={{ borderColor: "#C9DEE6", color: "#365766" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div
+          className="rounded-2xl p-6 mb-6 border"
+          style={{
+            backgroundColor: "white",
+            borderColor: "#D9EAF0",
+          }}
+        >
           <div className="flex items-center justify-between gap-4 mb-5">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -2093,53 +2603,31 @@ function PatientPage() {
                     style={{ borderColor: "#C9DEE6" }}
                   >
                     <option value="">Select department</option>
-                    {departments.map(department => (
-                      <option key={department} value={department}>
-                        {department}
-                      </option>
-                    ))}
+                    {departments.map(department => {
+                      const hasAvailableDoctor = doctors.some(
+                        doctor =>
+                          doctor.department === department &&
+                          !["on leave", "unavailable"].includes(
+                            String(doctor.status || "").trim().toLowerCase()
+                          )
+                      );
+
+                      return (
+                        <option
+                          key={department}
+                          value={department}
+                          disabled={!hasAvailableDoctor}
+                        >
+                          {department}
+                          {!hasAvailableDoctor
+                            ? " (Department Unavailable - All Doctors on Leave)"
+                            : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
-                <div>
-                  <label
-                    className="block text-sm font-semibold mb-2"
-                    style={{ color: "#365766" }}
-                  >
-                    Doctor *
-                  </label>
-                  <select
-                    value={registrationForm.doctor}
-                    onChange={e =>
-                      setRegistrationForm(form => ({
-                        ...form,
-                        doctor: e.target.value,
-                      }))
-                    }
-                    disabled={
-                      !registrationForm.department ||
-                      doctorsLoading ||
-                      availableDoctors.length === 0
-                    }
-                    className="w-full px-4 py-3 rounded-xl border outline-none bg-white disabled:bg-gray-50"
-                    style={{ borderColor: "#C9DEE6" }}
-                  >
-                    <option value="">
-                      {doctorsLoading
-                        ? "Loading doctors..."
-                        : !registrationForm.department
-                        ? "Select department first"
-                        : availableDoctors.length === 0
-                        ? "No doctors available"
-                        : "Select doctor"}
-                    </option>
-                    {availableDoctors.map(doctor => (
-                      <option key={doctor.doctor_id} value={doctor.doctor_id}>
-                        {doctor.doctor_name} · {doctor.specialization}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 <div className="md:col-span-2">
                   <label
@@ -2904,6 +3392,8 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
   const [doctors, setDoctors] = useState<DbDoctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [updatingDoctorId, setUpdatingDoctorId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
 
   useEffect(() => {
     const loadDoctors = async () => {
@@ -2929,6 +3419,47 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 
     return () => clearInterval(interval);
   }, []);
+
+  const updateDoctorLeave = async (doctor: DbDoctor) => {
+    const markOnLeave = doctor.status !== "On Leave";
+
+    setUpdatingDoctorId(doctor.doctor_id);
+    setActionMessage("");
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:5000/doctors/${encodeURIComponent(doctor.doctor_id)}/leave`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_on_leave: markOnLeave }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to update doctor status.");
+      }
+
+      const doctorsResponse = await fetch("http://127.0.0.1:5000/doctors", {
+        cache: "no-store",
+      });
+
+      if (!doctorsResponse.ok) {
+        throw new Error("Status updated, but doctor list could not be refreshed.");
+      }
+
+      setDoctors(await doctorsResponse.json());
+      setActionMessage(result.message);
+    } catch (err) {
+      setActionMessage(
+        err instanceof Error ? err.message : "Unable to update doctor status."
+      );
+    } finally {
+      setUpdatingDoctorId(null);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     if (status === "Available") return "#16a34a";
@@ -2995,6 +3526,11 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
               <div className="text-sm font-semibold" style={{ color: "#5a7a8a" }}>
                 Total Doctors: {doctors.length}
               </div>
+              {actionMessage && (
+                <p className="mt-2 text-sm font-semibold" style={{ color: actionMessage.includes("Unable") || actionMessage.includes("active patients") || actionMessage.includes("queue") ? "#B74A42" : "#16a34a" }}>
+                  {actionMessage}
+                </p>
+              )}
             </div>
 
             <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-6 mb-8">
@@ -3107,6 +3643,22 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
                         </div>
                       </div>
                     </div>
+
+                    <button
+                      onClick={() => updateDoctorLeave(doc)}
+                      disabled={updatingDoctorId !== null}
+                      className="w-full mt-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                      style={{
+                        backgroundColor: doc.status === "On Leave" ? "#DCFCE7" : "#FEE2E2",
+                        color: doc.status === "On Leave" ? "#15803D" : "#B91C1C",
+                      }}
+                    >
+                      {updatingDoctorId === doc.doctor_id
+                        ? "Updating..."
+                        : doc.status === "On Leave"
+                        ? "Mark Available"
+                        : "Mark On Leave"}
+                    </button>
                   </GlassCard>
                 );
               })}
