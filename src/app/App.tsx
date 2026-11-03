@@ -4755,6 +4755,7 @@ export default function App() {
         if (role === "admin" || role === "receptionist") {
           setStaffRole(role);
           setIsAuthenticated(true);
+          setPage("reception");
         }
       })
       .catch(error => console.error("Session check failed:", error))
