@@ -1003,7 +1003,17 @@ def get_patient_by_token(token):
                 q.queue_position,
                 q.status AS queue_status,
                 q.added_at,
-                q.consulting_started_at
+                q.consulting_started_at,
+                CASE
+                    WHEN q.added_at IS NULL THEN NULL
+                    WHEN q.consulting_started_at IS NOT NULL THEN
+                        GREATEST(0, TIMESTAMPDIFF(
+                            SECOND, q.added_at, q.consulting_started_at
+                        ))
+                    WHEN q.status = 'waiting' THEN
+                        GREATEST(0, TIMESTAMPDIFF(SECOND, q.added_at, NOW()))
+                    ELSE NULL
+                END AS actual_wait_seconds
             FROM patients p
             LEFT JOIN doctors d
                 ON p.doctor_id = d.doctor_id

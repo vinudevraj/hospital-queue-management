@@ -2380,12 +2380,9 @@ function PatientPage() {
   }, [patient?.token]);
 
   const liveWaitSeconds =
-    patient?.status === "consulting"
-      ? 0
-      : patient?.live_eta_seconds !== null &&
-        patient?.live_eta_seconds !== undefined
-      ? patient.live_eta_seconds
-      : (patient?.live_eta_minutes ?? patient?.predicted_wait_time ?? 0) * 60;
+    patient?.actual_wait_seconds != null
+      ? Number(patient.actual_wait_seconds)
+      : 0;
 
   const liveWait = Math.floor(liveWaitSeconds / 60);
 
@@ -3055,7 +3052,7 @@ function PatientPage() {
                       className="text-sm mt-2 font-medium"
                       style={{ color: "#7A929E" }}
                     >
-                      Live queue estimate: {liveWait} min
+                      Live queue estimate: {Number(patient.live_eta_minutes ?? 0)} min
                     </p>
                   )}
 
