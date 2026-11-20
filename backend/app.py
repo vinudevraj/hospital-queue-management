@@ -38,16 +38,17 @@ model = joblib.load(MODEL_PATH)
 def get_db_connection():
     connection = mysql.connector.connect(
         host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT", "3306")),
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME")
+        database=os.getenv("DB_NAME"),
+        ssl_ca=os.getenv("DB_SSL_CA") or None,
+        ssl_verify_cert=True if os.getenv("DB_SSL_CA") else False
     )
     cursor = connection.cursor()
     cursor.execute("SET time_zone = '+05:30'")
     cursor.close()
     return connection
-
-
 def staff_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
