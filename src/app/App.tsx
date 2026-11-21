@@ -3092,37 +3092,38 @@ function QueueBeePage({ onBack }: { onBack: () => void }) {
     const q = value.toLowerCase();
 
     if (q.includes("emergency") || q.includes("chest pain") || q.includes("breath")) {
-      return "If you think this may be a medical emergency, contact hospital emergency staff immediately. Do not wait for an online response.";
-    }
-    if (q.includes("triage")) {
-      return "Triage is the process hospital staff use to assess how urgently a patient needs medical attention. Patients with more urgent needs are prioritized.";
-    }
-    if (q.includes("document") || q.includes("carry") || q.includes("bring") || q.includes("before visiting")) {
-      return "Before visiting, carry a valid ID, appointment confirmation (if any), previous medical reports, prescriptions and details of your regular medicines. Keep these documents ready for registration.";
-    }
-    if (q.includes("registration") || q.includes("register")) {
-      return "You can use the Online Patient Registration section in the Patient Portal. Enter the requested details carefully and follow the on-screen instructions.";
-    }
-    if (q.includes("opd")) {
-      return "OPD stands for Outpatient Department. It is where patients visit a doctor for consultation without being admitted to the hospital.";
-    }
-    if (q.includes("prescription")) {
-      return "A prescription is a written instruction from a healthcare professional that lists medicines or other care recommended for a patient. Ask your doctor or pharmacist if anything is unclear.";
-    }
-    if (q.includes("appointment") || q.includes("prepare")) {
-      return "Keep your appointment details, ID proof, previous reports and prescriptions ready. Arrive early enough to complete registration, and make a note of any questions you want to ask your doctor.";
-    }
-    if (q.includes("consultation")) {
-      return "During a consultation, the healthcare professional discusses your concerns, reviews relevant medical history and reports, and explains the next steps in your care. Share your questions and concerns openly.";
-    }
-    if (q.includes("report") || q.includes("test")) {
-      return "A medical report contains findings from a test or examination. Your healthcare professional can explain the results and what they mean in the context of your health. Bring previous reports if available.";
-    }
-    if (q.includes("department") || q.includes("doctor")) {
-      return "If you are unsure which department to visit, explain the reason for your visit to the hospital reception team. They can guide you to the appropriate department. QueueBee cannot assess symptoms or choose a department for you.";
+      return "If this is a medical emergency, please contact the hospital emergency team or reception immediately. QueueBee is a patient-support guide, not an emergency service. The hospital queue system supports priority handling, but you should never wait for an app response during an emergency.";
     }
 
-    return "I can help with general hospital guidance, appointment preparation and simple medical-term explanations. Please choose one of the questions above. For personal medical advice, consult a qualified healthcare professional.";
+    if (q.includes("before visiting")) {
+      return "You can start with the Patient Portal. Complete your registration and, if appointment booking is available, select your preferred department and slot. When you arrive, follow the hospital's check-in process to receive your queue token. You can then use the My Queue section to follow your progress.";
+    }
+
+    if (q.includes("department") || q.includes("doctor")) {
+      return "Your hospital visit starts with choosing the appropriate department. Check the department options available in the Patient Portal. Not sure which one fits your needs? Speak with the reception team before proceeding. They can guide you to the right department and doctor.";
+    }
+
+    if (q.includes("document") || q.includes("carry") || q.includes("bring")) {
+      return "Keep your photo ID, appointment details, previous prescriptions and relevant medical reports ready. These can help the reception team with registration and help your doctor understand your medical history. QueueBee does not currently upload or verify these documents.";
+    }
+
+    if (q.includes("consultation")) {
+      return "Once your token is called by the reception team, your queue status changes to Consulting. You can then proceed for your consultation. After the visit, the staff can update the queue status to Completed. The system helps manage the waiting process; the consultation itself happens between you and your healthcare professional.";
+    }
+
+    if (q.includes("triage")) {
+      return "Triage helps hospital staff decide the order in which patients need attention. Your queue management system supports five priority levels: Emergency, Immediate, Urgent, Semi-Urgent and Non-Urgent. Staff use these priorities to manage the queue. Patients should not select or change their own medical priority.";
+    }
+
+    if (q.includes("report") || q.includes("test")) {
+      return "Have your previous test reports ready when you meet the doctor. Your doctor can explain the findings and decide whether further tests are needed. QueueBee can guide you through the hospital visit, but it does not analyse medical reports or interpret test results.";
+    }
+
+    if (q.includes("appointment") || q.includes("prepare")) {
+      return "For a smoother visit, book your appointment through the Patient Portal if slots are available. Keep the appointment details handy and arrive in time for check-in. Once you receive your token, My Queue lets you follow your queue status and view the system's predicted waiting time. Remember, the estimate can change as the queue moves.";
+    }
+
+    return "I'm QueueBee, your guide to using this hospital queue management system. Choose one of the questions above to learn about registration, appointments, tokens, queue priorities or waiting-time updates. For personal medical decisions, please speak with your healthcare professional.";
   };
 
   const sendQuestion = () => {
