@@ -2250,7 +2250,7 @@ def get_queue():
 
     department_service_times = get_department_service_times(cursor)
 
-    default_service_time = 20
+    default_service_time = 19
 
     # Build independent ETA state for each doctor and department.
     doctor_queue_state = {}
@@ -2271,10 +2271,7 @@ def get_queue():
         state = doctor_queue_state[doctor_key]
 
         if row["status"] == "consulting":
-            service_time = department_service_times.get(
-                department,
-                default_service_time
-            )
+            service_time = 19
             remaining_seconds = service_time * 60
             remaining = (remaining_seconds + 59) // 60
 
@@ -2294,10 +2291,8 @@ def get_queue():
     # Initialize each doctor's waiting time after all consulting
     # patients have been accounted for.
     for state in doctor_queue_state.values():
-        state["cumulative_wait"] = state["consulting_remaining"]
-        state["cumulative_wait_seconds"] = (
-            state["consulting_remaining_seconds"]
-        )
+        state["cumulative_wait"] = 19
+        state["cumulative_wait_seconds"] = 19 * 60
 
     waiting_count = 0
     result = []
@@ -2316,10 +2311,7 @@ def get_queue():
             row["live_eta_minutes"] = state["cumulative_wait"]
             row["live_eta_seconds"] = state["cumulative_wait_seconds"]
 
-            service_time = department_service_times.get(
-                department,
-                default_service_time
-            )
+            service_time = 19
             state["cumulative_wait"] += service_time
             state["cumulative_wait_seconds"] += service_time * 60
 
