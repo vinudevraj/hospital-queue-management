@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Page = "landing" | "login" | "admin-login" | "receptionist-login" | "reception" | "patient" | "eta" | "doctors" | "analytics";
+type Page = "landing" | "login" | "admin-login" | "receptionist-login" | "reception" | "patient" | "queuebee" | "eta" | "doctors" | "analytics";
 type PatientStatus = "consulting" | "waiting" | "completed";
 
 interface Patient {
@@ -1840,7 +1840,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
 // ─── Patient Tracking Portal ──────────────────────────────────────────────────
 
-function PatientPage() {
+function PatientPage({ onNav }: { onNav: (page: Page) => void }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [token, setToken] = useState("");
   const [patient, setPatient] = useState<any>(null);
@@ -2391,6 +2391,33 @@ function PatientPage() {
               </p>
             </div>
           </div>
+
+          <button
+            onClick={() => onNav("queuebee")}
+            className="w-full mt-5 p-5 rounded-2xl text-left flex flex-wrap items-center justify-between gap-4 border transition-all hover:shadow-md"
+            style={{
+              background: "linear-gradient(110deg, #EAF6FA, #F5FAFD)",
+              borderColor: "#B9DDE8",
+            }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                style={{ backgroundColor: "#D7EDF5" }}>
+                <Brain className="w-8 h-8" style={{ color: "#3F8EAC" }} />
+              </div>
+              <div>
+                <div className="font-bold text-lg" style={{ color: "#173B4D" }}>
+                  Meet QueueBee AI
+                </div>
+                <p className="text-sm mt-1" style={{ color: "#5a7a8a" }}>
+                  Your Smart Hospital Companion — get simple explanations and prepare for your visit.
+                </p>
+              </div>
+            </div>
+            <span className="font-bold text-sm flex items-center gap-2" style={{ color: "#3F8EAC" }}>
+              Explore <ArrowRight className="w-4 h-4" />
+            </span>
+          </button>
         </div>
 
         <div
@@ -3035,6 +3062,316 @@ function PatientPage() {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function QueueBeePage({ onBack }: { onBack: () => void }) {
+  const [section, setSection] = useState("chat");
+  const [question, setQuestion] = useState("");
+  const [term, setTerm] = useState("");
+  const [language, setLanguage] = useState("English");
+  const [messages, setMessages] = useState<{ role: string; text: string }[]>([
+    {
+      role: "bot",
+      text: "Hello! I'm QueueBee, your Smart Hospital Companion. Ask me about hospital visits, common medical terms, or how to prepare for your appointment."
+    }
+  ]);
+  const [checkedItems, setCheckedItems] = useState<string[]>([]);
+
+  const checklist = [
+    "Carry a valid ID proof",
+    "Bring previous prescriptions and medical reports",
+    "Keep your appointment details ready",
+    "Make a note of questions you want to ask the doctor",
+    "Carry your regular medication details"
+  ];
+
+  const getReply = (value: string) => {
+    const q = value.toLowerCase();
+
+    if (q.includes("emergency") || q.includes("chest pain") || q.includes("breath")) {
+      return "If you think this may be a medical emergency, contact hospital emergency staff immediately. Do not wait for an online response.";
+    }
+    if (q.includes("triage")) {
+      return "Triage is the process hospital staff use to assess how urgently a patient needs medical attention. Patients with more urgent needs are prioritized.";
+    }
+    if (q.includes("document") || q.includes("carry") || q.includes("bring") || q.includes("before visiting")) {
+      return "Before visiting, carry a valid ID, appointment confirmation (if any), previous medical reports, prescriptions and details of your regular medicines. Keep these documents ready for registration.";
+    }
+    if (q.includes("registration") || q.includes("register")) {
+      return "You can use the Online Patient Registration section in the Patient Portal. Enter the requested details carefully and follow the on-screen instructions.";
+    }
+    if (q.includes("opd")) {
+      return "OPD stands for Outpatient Department. It is where patients visit a doctor for consultation without being admitted to the hospital.";
+    }
+    if (q.includes("prescription")) {
+      return "A prescription is a written instruction from a healthcare professional that lists medicines or other care recommended for a patient. Ask your doctor or pharmacist if anything is unclear.";
+    }
+    if (q.includes("appointment") || q.includes("prepare")) {
+      return "Keep your appointment details, ID proof, previous reports and prescriptions ready. Arrive early enough to complete registration, and make a note of any questions you want to ask your doctor.";
+    }
+    if (q.includes("consultation")) {
+      return "During a consultation, the healthcare professional discusses your concerns, reviews relevant medical history and reports, and explains the next steps in your care. Share your questions and concerns openly.";
+    }
+    if (q.includes("report") || q.includes("test")) {
+      return "A medical report contains findings from a test or examination. Your healthcare professional can explain the results and what they mean in the context of your health. Bring previous reports if available.";
+    }
+    if (q.includes("department") || q.includes("doctor")) {
+      return "If you are unsure which department to visit, explain the reason for your visit to the hospital reception team. They can guide you to the appropriate department. QueueBee cannot assess symptoms or choose a department for you.";
+    }
+
+    return "I can help with general hospital guidance, appointment preparation and simple medical-term explanations. Please choose one of the questions above. For personal medical advice, consult a qualified healthcare professional.";
+  };
+
+  const sendQuestion = () => {
+    const value = question.trim();
+    if (!value) return;
+    setMessages(current => [
+      ...current,
+      { role: "user", text: value },
+      { role: "bot", text: getReply(value) }
+    ]);
+    setQuestion("");
+  };
+
+  const explanations: Record<string, string> = {
+    "opd": "OPD means Outpatient Department. It is the part of a hospital where you visit a doctor without staying overnight.",
+    "ipd": "IPD means Inpatient Department. It is for patients who are admitted to the hospital for treatment or observation.",
+    "triage": "Triage is the process of checking how urgently a patient needs medical attention. It helps hospital staff prioritize care.",
+    "prescription": "A prescription is a written instruction from a healthcare professional about medicines or treatment.",
+    "vitals": "Vital signs are basic measurements such as temperature, pulse, breathing rate and blood pressure.",
+    "consultation": "A consultation is a discussion with a healthcare professional about your health concerns and care.",
+    "radiology": "Radiology is a medical department that uses imaging tests, such as X-rays and scans, to help examine the body.",
+    "pathology": "Pathology is the study and testing of samples such as blood or tissue to help understand health conditions."
+  };
+
+  const explainTerm = () => {
+    const key = term.trim().toLowerCase();
+    if (!key) return "";
+    return explanations[key] || "I don't have a simple explanation for that term in my current guide. Please ask your doctor or hospital staff to explain it in the context of your care.";
+  };
+
+  const toggleChecklist = (item: string) => {
+    setCheckedItems(current =>
+      current.includes(item)
+        ? current.filter(value => value !== item)
+        : [...current, item]
+    );
+  };
+
+  const tabs = [
+    { id: "chat", label: "Ask QueueBee" },
+    { id: "terms", label: "Explain a Term" },
+    { id: "visit", label: "Visit Preparation" },
+    { id: "safety", label: "Patient Safety" }
+  ];
+
+  return (
+    <div className="min-h-screen px-4 py-8 md:px-8" style={{ backgroundColor: "#F4F8FC" }}>
+      <div className="max-w-6xl mx-auto">
+        <button onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-semibold"
+          style={{ color: "#3F8EAC" }}>
+          <ArrowRight className="w-4 h-4 rotate-180" /> Back to Patient Portal
+        </button>
+
+        <div className="rounded-3xl p-7 md:p-10 mb-7 overflow-hidden"
+          style={{ background: "linear-gradient(120deg, #173B4D, #3F8EAC)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold mb-4"
+                style={{ backgroundColor: "#DDEEF8", color: "#24566D" }}>
+                <Zap className="w-3 h-3" /> PATIENT SUPPORT ASSISTANT
+              </div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white">Hello, I'm QueueBee AI!</h1>
+              <p className="mt-3 text-sm md:text-base" style={{ color: "#E2F1F7" }}>
+                Your Smart Hospital Companion. Understand hospital terms, get visit-ready and find helpful guidance — all in one place.
+              </p>
+            </div>
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center"
+              style={{ backgroundColor: "#DDEEF8" }}>
+              <Brain className="w-14 h-14" style={{ color: "#3F8EAC" }} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setSection(tab.id)}
+              className="px-4 py-3 rounded-xl text-sm font-semibold transition-all"
+              style={{
+                backgroundColor: section === tab.id ? "#3F8EAC" : "white",
+                color: section === tab.id ? "white" : "#456474",
+                border: "1px solid #D9EAF0"
+              }}>
+              {tab.label}
+            </button>
+          ))}
+          <div className="ml-auto flex items-center gap-2 text-sm" style={{ color: "#5a7a8a" }}>
+            <span>Language</span>
+            <select value={language} onChange={e => setLanguage(e.target.value)}
+              className="rounded-lg border px-2 py-2 bg-white"
+              style={{ borderColor: "#D9EAF0" }}>
+              <option>English</option>
+              <option>Hindi</option>
+              <option>Marathi</option>
+            </select>
+          </div>
+        </div>
+
+        {section === "chat" && (
+          <div className="bg-white rounded-2xl border p-5 md:p-7"
+            style={{ borderColor: "#D9EAF0" }}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: "#E8F4F8" }}>
+                <Brain className="w-6 h-6" style={{ color: "#3F8EAC" }} />
+              </div>
+              <div>
+                <h2 className="font-bold text-lg" style={{ color: "#173B4D" }}>Chat with QueueBee</h2>
+                <p className="text-xs" style={{ color: "#7A929E" }}>General hospital guidance • Not a medical diagnosis service</p>
+              </div>
+            </div>
+            <div className="space-y-3 mb-5 max-h-96 overflow-y-auto">
+              {messages.map((message, index) => (
+                <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm"
+                    style={{
+                      backgroundColor: message.role === "user" ? "#3F8EAC" : "#EFF7FA",
+                      color: message.role === "user" ? "white" : "#294B5B"
+                    }}>
+                    {message.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mb-3">
+              <p className="text-sm font-bold mb-3" style={{ color: "#294B5B" }}>
+                Choose a question to get started
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[
+                  "What should I do before visiting the hospital?",
+                  "Which department should I visit?",
+                  "What documents should I carry?",
+                  "What happens during a consultation?",
+                  "What does triage mean?",
+                  "How do I understand my medical report?",
+                  "What should I do in a medical emergency?",
+                  "How can I prepare for my appointment?"
+                ].map(prompt => (
+                  <button
+                    key={prompt}
+                    onClick={() => setMessages(current => [
+                      ...current,
+                      { role: "user", text: prompt },
+                      { role: "bot", text: getReply(prompt) }
+                    ])}
+                    className="rounded-xl p-4 text-left text-sm font-medium border transition-all hover:shadow-md"
+                    style={{
+                      borderColor: "#D9EAF0",
+                      backgroundColor: "#F7FBFC",
+                      color: "#294B5B"
+                    }}
+                  >
+                    {prompt}
+                    <ArrowRight className="w-4 h-4 inline ml-2" style={{ color: "#3F8EAC" }} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {section === "terms" && (
+          <div className="bg-white rounded-2xl border p-6 md:p-8" style={{ borderColor: "#D9EAF0" }}>
+            <h2 className="text-xl font-bold mb-2" style={{ color: "#173B4D" }}>Explain It Simply</h2>
+            <p className="text-sm mb-5" style={{ color: "#6D8795" }}>
+              Medical words can be confusing. Enter a common hospital term to understand it in everyday language.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <input value={term} onChange={e => setTerm(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") setTerm(term.trim()); }}
+                placeholder="Try OPD, triage, vitals, radiology..."
+                className="flex-1 min-w-0 rounded-xl border px-4 py-3 text-sm"
+                style={{ borderColor: "#D9EAF0" }} />
+              <button onClick={() => setTerm(term.trim())}
+                className="rounded-xl px-5 py-3 font-bold text-white"
+                style={{ backgroundColor: "#3F8EAC" }}>Explain</button>
+            </div>
+            {term.trim() && (
+              <div className="mt-5 rounded-xl p-5" style={{ backgroundColor: "#EFF7FA" }}>
+                <p className="text-xs font-bold uppercase mb-2" style={{ color: "#3F8EAC" }}>
+                  {term}
+                </p>
+                <p className="text-sm leading-6" style={{ color: "#294B5B" }}>{explainTerm()}</p>
+              </div>
+            )}
+            <div className="mt-6 flex flex-wrap gap-2">
+              {Object.keys(explanations).map(value => (
+                <button key={value} onClick={() => setTerm(value)}
+                  className="rounded-full px-3 py-2 text-xs border capitalize"
+                  style={{ borderColor: "#D9EAF0", color: "#3F8EAC" }}>{value}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {section === "visit" && (
+          <div className="bg-white rounded-2xl border p-6 md:p-8" style={{ borderColor: "#D9EAF0" }}>
+            <h2 className="text-xl font-bold mb-2" style={{ color: "#173B4D" }}>Your Visit Preparation Checklist</h2>
+            <p className="text-sm mb-5" style={{ color: "#6D8795" }}>
+              Tick off these useful reminders before visiting the hospital.
+            </p>
+            <div className="h-2 rounded-full mb-5 overflow-hidden" style={{ backgroundColor: "#E8F1F5" }}>
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${checkedItems.length / checklist.length * 100}%`, backgroundColor: "#3F8EAC" }} />
+            </div>
+            <p className="text-xs mb-4 font-semibold" style={{ color: "#3F8EAC" }}>
+              {checkedItems.length} of {checklist.length} completed
+            </p>
+            <div className="space-y-3">
+              {checklist.map(item => (
+                <label key={item} className="flex items-center gap-3 p-4 rounded-xl cursor-pointer"
+                  style={{ backgroundColor: "#F6FAFC", color: "#294B5B" }}>
+                  <input type="checkbox" checked={checkedItems.includes(item)}
+                    onChange={() => toggleChecklist(item)} className="w-4 h-4 accent-sky-700" />
+                  <span className={`text-sm ${checkedItems.includes(item) ? "line-through opacity-60" : ""}`}>
+                    {item}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <button onClick={() => setCheckedItems([])} className="mt-5 text-sm font-semibold"
+              style={{ color: "#3F8EAC" }}>Reset checklist</button>
+          </div>
+        )}
+
+        {section === "safety" && (
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              ["Know your medicines", "Keep an updated list of medicines and inform your healthcare professional about allergies."],
+              ["Ask questions", "If you do not understand a test, medicine or instruction, ask your healthcare professional to explain it."],
+              ["Protect your information", "Share personal medical information only with authorized healthcare staff."],
+              ["Urgent concerns", "For severe or sudden symptoms, contact hospital emergency staff immediately rather than waiting for online guidance."]
+            ].map(([heading, description]) => (
+              <div key={heading} className="bg-white rounded-2xl border p-6"
+                style={{ borderColor: "#D9EAF0" }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+                  style={{ backgroundColor: "#E8F4F8" }}>
+                  <Shield className="w-5 h-5" style={{ color: "#3F8EAC" }} />
+                </div>
+                <h3 className="font-bold mb-2" style={{ color: "#173B4D" }}>{heading}</h3>
+                <p className="text-sm leading-6" style={{ color: "#6D8795" }}>{description}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-center mt-7 px-4" style={{ color: "#8AA0AA" }}>
+          QueueBee provides general educational information only. It does not diagnose conditions or replace professional medical advice.
+        </p>
       </div>
     </div>
   );
@@ -4861,7 +5198,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" && (
+      {page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" && page !== "queuebee" && (
         <NavBar
           current={page}
           onNav={setPage}
@@ -4870,7 +5207,7 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
-      <div className={page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" ? "pt-16" : ""}>
+      <div className={page !== "landing" && page !== "login" && page !== "admin-login" && page !== "receptionist-login" && page !== "queuebee" ? "pt-16" : ""}>
         {page === "landing" && <LandingPage onNav={setPage} />}
         {page === "login" && <RoleSelectionPage onNav={setPage} />}
         {(page === "admin-login" || page === "receptionist-login") && (
@@ -4887,7 +5224,8 @@ export default function App() {
         {page === "reception" && isAuthenticated && (
           <ReceptionPage patients={patients} setPatients={setPatients} />
         )}
-        {page === "patient" && <PatientPage />}
+        {page === "patient" && <PatientPage onNav={setPage} />}
+        {page === "queuebee" && <QueueBeePage onBack={() => setPage("patient")} />}
         {page === "eta" && isAuthenticated && (
           <>
             <ETAPage onAnalyticsUpdate={setAnalyticsData} />
