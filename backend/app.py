@@ -9,6 +9,7 @@ import pandas as pd
 import joblib
 import os
 import math
+import time
 import mysql.connector
 
 
@@ -33,6 +34,44 @@ MODEL_PATH = os.path.join(
 )
 
 model = joblib.load(MODEL_PATH)
+
+
+
+# Cache historical department service times for 5 minutes.
+_department_service_times_cache = {
+    "data": None,
+    "expires_at": 0
+}
+
+def get_department_service_times(cursor):
+    now = time.monotonic()
+
+    if (
+        _department_service_times_cache["data"] is not None
+        and now < _department_service_times_cache["expires_at"]
+    ):
+        return _department_service_times_cache["data"]
+
+    cursor.execute("""
+        SELECT
+            Department,
+            AVG(ConsultationDurationTime) AS avg_duration
+        FROM hospital_wait_data
+        WHERE ConsultationDurationTime IS NOT NULL
+          AND ConsultationDurationTime > 0
+        GROUP BY Department
+    """)
+
+    service_times = {
+        row["Department"]: max(1, math.ceil(float(row["avg_duration"])))
+        for row in cursor.fetchall()
+        if row["Department"]
+    }
+
+    _department_service_times_cache["data"] = service_times
+    _department_service_times_cache["expires_at"] = now + 300
+
+    return service_times
 
 
 def get_db_connection():
@@ -275,7 +314,8 @@ def get_analytics():
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND q.status = 'completed'
               AND q.consulting_started_at IS NOT NULL
@@ -400,7 +440,8 @@ def get_analytics():
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND q.status = 'completed'
               AND q.consulting_started_at IS NOT NULL
@@ -438,7 +479,8 @@ def get_analytics():
                 p.department AS name,
                 COUNT(*) AS patients
             FROM patients p
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND p.department IS NOT NULL
               AND p.department <> ''
@@ -461,7 +503,8 @@ def get_analytics():
                 p.triage_category AS name,
                 COUNT(*) AS patients
             FROM patients p
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND p.triage_category IS NOT NULL
               AND p.triage_category <> ''
@@ -502,7 +545,8 @@ def get_analytics():
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND q.status = 'completed'
               AND q.added_at IS NOT NULL
@@ -545,7 +589,8 @@ def get_analytics():
                 ON p.doctor_id = d.doctor_id
             LEFT JOIN queue q
                 ON p.patient_id = q.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
             ORDER BY p.registered_at ASC, p.patient_id ASC
         """, (LIVE_PATIENT_ID_MIN,))
@@ -616,7 +661,8 @@ def get_analytics():
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND p.patient_id >= %s
               AND q.status = 'completed'
               AND q.predicted_wait_time IS NOT NULL
@@ -698,7 +744,8 @@ def get_analytics():
                     COUNT(*) AS waiting_count
                 FROM patients p
                 JOIN queue q ON q.patient_id = p.patient_id
-                WHERE DATE(p.registered_at) = CURDATE()
+                WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                   AND q.status = 'waiting'
                 GROUP BY p.doctor_id
             ) w ON w.doctor_id = d.doctor_id
@@ -708,7 +755,8 @@ def get_analytics():
                     COUNT(*) AS consulting_count
                 FROM patients p
                 JOIN queue q ON q.patient_id = p.patient_id
-                WHERE DATE(p.registered_at) = CURDATE()
+                WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                   AND q.status = 'consulting'
                 GROUP BY p.doctor_id
             ) c ON c.doctor_id = d.doctor_id
@@ -859,7 +907,8 @@ def update_doctor_leave(doctor_id):
                 FROM queue q
                 JOIN patients p ON q.patient_id = p.patient_id
                 WHERE p.doctor_id = %s
-                  AND DATE(p.registered_at) = CURDATE()
+                  AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                   AND q.status IN ('waiting', 'consulting')
             """, (doctor_id,))
 
@@ -933,7 +982,8 @@ def get_doctors():
                         JOIN patients p
                             ON q.patient_id = p.patient_id
                         WHERE p.doctor_id = d.doctor_id
-                          AND DATE(p.registered_at) = CURDATE()
+                          AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                           AND q.status = 'consulting'
                     )
                     THEN 'Busy'
@@ -945,7 +995,8 @@ def get_doctors():
                     JOIN patients p
                         ON q.patient_id = p.patient_id
                     WHERE p.doctor_id = d.doctor_id
-                      AND DATE(p.registered_at) = CURDATE()
+                      AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                       AND q.status = 'waiting'
                 ) AS waiting_patients
             FROM doctors d
@@ -1021,7 +1072,8 @@ def get_patient_by_token(token):
             LEFT JOIN queue q
                 ON q.patient_id = p.patient_id
             WHERE UPPER(p.token) = UPPER(%s)
-              AND DATE(p.registered_at) = CURDATE()
+              AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
             ORDER BY q.queue_id DESC
             LIMIT 1
         """, (token.strip(),))
@@ -1033,22 +1085,7 @@ def get_patient_by_token(token):
                 "error": "Patient token not found for today."
             }), 404
 
-        # Historical average consultation duration by department.
-        cursor.execute("""
-            SELECT
-                Department,
-                AVG(ConsultationDurationTime) AS avg_duration
-            FROM hospital_wait_data
-            WHERE ConsultationDurationTime IS NOT NULL
-              AND ConsultationDurationTime > 0
-            GROUP BY Department
-        """)
-
-        department_service_times = {
-            row["Department"]: max(1, math.ceil(float(row["avg_duration"])))
-            for row in cursor.fetchall()
-            if row["Department"]
-        }
+        department_service_times = get_department_service_times(cursor)
 
         default_service_time = 20
         live_eta_minutes = None
@@ -1073,7 +1110,8 @@ def get_patient_by_token(token):
                 FROM queue q
                 JOIN patients p
                     ON q.patient_id = p.patient_id
-                WHERE DATE(p.registered_at) = CURDATE()
+                WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                   AND q.status IN ("waiting", "consulting")
                   AND p.department = %s
                   AND p.doctor_id <=> %s
@@ -1235,7 +1273,8 @@ def get_patients():
                 ON p.doctor_id = d.doctor_id
             LEFT JOIN queue q
                 ON p.patient_id = q.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
             ORDER BY p.registered_at ASC, p.patient_id ASC
             LIMIT 100
         """)
@@ -1357,7 +1396,8 @@ def create_patient():
                     FROM patients p
                     JOIN queue q ON q.patient_id = p.patient_id
                     WHERE p.doctor_id = %s
-                      AND DATE(p.registered_at) = CURDATE()
+                      AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                       AND q.status IN ('waiting', 'consulting')
                 """, (available_doctor["doctor_id"],))
 
@@ -1987,7 +2027,8 @@ def check_in_appointment(appointment_id):
                 FROM patients p
                 JOIN queue q ON q.patient_id = p.patient_id
                 WHERE p.doctor_id = %s
-                  AND DATE(p.registered_at) = CURDATE()
+                  AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
                   AND q.status IN ('waiting', 'consulting')
             """, (doctor["doctor_id"],))
 
@@ -2179,7 +2220,8 @@ def get_queue():
         FROM queue q
         JOIN patients p ON q.patient_id = p.patient_id
         LEFT JOIN doctors d ON p.doctor_id = d.doctor_id
-        WHERE DATE(p.registered_at) = CURDATE()
+        WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
           AND q.status IN ("waiting", "consulting")
         ORDER BY
             q.priority ASC,
@@ -2189,23 +2231,7 @@ def get_queue():
 
     rows = cursor.fetchall()
 
-    # Historical average consultation duration by department.
-    # These values come directly from the hospital dataset.
-    cursor.execute("""
-        SELECT
-            Department,
-            AVG(ConsultationDurationTime) AS avg_duration
-        FROM hospital_wait_data
-        WHERE ConsultationDurationTime IS NOT NULL
-          AND ConsultationDurationTime > 0
-        GROUP BY Department
-    """)
-
-    department_service_times = {
-        row["Department"]: max(1, math.ceil(float(row["avg_duration"])))
-        for row in cursor.fetchall()
-        if row["Department"]
-    }
+    department_service_times = get_department_service_times(cursor)
 
     default_service_time = 20
 
@@ -2337,7 +2363,8 @@ def call_next_patient():
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND q.status = 'waiting'
               AND p.status = 'waiting'
         """
@@ -2491,7 +2518,8 @@ def skip_patient(patient_id):
             JOIN patients p
                 ON q.patient_id = p.patient_id
             WHERE q.patient_id = %s
-              AND DATE(p.registered_at) = CURDATE()
+              AND p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
             LIMIT 1
         """, (patient_id,))
 
@@ -2516,7 +2544,8 @@ def skip_patient(patient_id):
             FROM queue q
             JOIN patients p
                 ON q.patient_id = p.patient_id
-            WHERE DATE(p.registered_at) = CURDATE()
+            WHERE p.registered_at >= CURDATE()
+              AND p.registered_at < CURDATE() + INTERVAL 1 DAY
               AND q.status = 'waiting'
               AND p.department = (
                   SELECT department

@@ -3083,39 +3083,56 @@ function ETAPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadETAData = async () => {
+    const loadQueueData = async () => {
       try {
-        const [queueResponse, analyticsResponse, doctorsResponse] =
-          await Promise.all([
-            fetch("/api/queue"),
-            fetch("/api/analytics"),
-            fetch("/api/doctors")
-          ]);
+        const response = await fetch("/api/queue");
 
-        if (!queueResponse.ok || !analyticsResponse.ok || !doctorsResponse.ok) {
-          throw new Error("Failed to load ETA data");
+        if (!response.ok) {
+          throw new Error("Failed to load queue data");
         }
 
-        const [queue, analytics, doctors] = await Promise.all([
-          queueResponse.json(),
-          analyticsResponse.json(),
-          doctorsResponse.json()
-        ]);
-
+        const queue = await response.json();
         setQueueData(queue);
-        setAnalyticsData(analytics);
-        setDoctorsData(doctors);
       } catch (error) {
-        console.error("Failed to load ETA data:", error);
+        console.error("Failed to load queue data:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    loadETAData();
+    const loadSummaryData = async () => {
+      try {
+        const [analyticsResponse, doctorsResponse] = await Promise.all([
+          fetch("/api/analytics"),
+          fetch("/api/doctors")
+        ]);
 
-    const interval = setInterval(loadETAData, 5000);
-    return () => clearInterval(interval);
+        if (!analyticsResponse.ok || !doctorsResponse.ok) {
+          throw new Error("Failed to load dashboard summary");
+        }
+
+        const [analytics, doctors] = await Promise.all([
+          analyticsResponse.json(),
+          doctorsResponse.json()
+        ]);
+
+        setAnalyticsData(analytics);
+        setDoctorsData(doctors);
+      } catch (error) {
+        console.error("Failed to load dashboard summary:", error);
+      }
+    };
+
+    loadQueueData();
+    loadSummaryData();
+
+    const queueInterval = setInterval(loadQueueData, 5000);
+    const summaryInterval = setInterval(loadSummaryData, 60000);
+
+    return () => {
+      clearInterval(queueInterval);
+      clearInterval(summaryInterval);
+    };
   }, []);
 
   const queue = queueData?.queue ?? [];
@@ -3445,7 +3462,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 
     loadDoctors();
 
-    const interval = setInterval(loadDoctors, 5000);
+    const interval = setInterval(loadDoctors, 60000);
 
     return () => clearInterval(interval);
   }, []);
@@ -3755,7 +3772,7 @@ function AnalyticsPage() {
   useEffect(() => {
     loadAnalytics();
 
-    const interval = setInterval(loadAnalytics, 5000);
+    const interval = setInterval(loadAnalytics, 60000);
 
     return () => clearInterval(interval);
   }, []);
