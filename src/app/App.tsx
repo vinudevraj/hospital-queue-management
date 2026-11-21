@@ -781,6 +781,10 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
       const liveQueue = queueData.queue || [];
 
+      const liveQueueByToken = new Map(
+        liveQueue.map((patient: any) => [patient.token, patient])
+      );
+
       const allPatients = Array.isArray(patientsData)
         ? patientsData
         : patientsData.patients || [];
@@ -793,9 +797,7 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
 
       const livePatients: Patient[] = allPatients.map(
         (dbPatient: any) => {
-          const livePatient = liveQueue.find(
-            (q: any) => q.token === dbPatient.token
-          );
+          const livePatient = liveQueueByToken.get(dbPatient.token);
 
           const liveEtaStorageKey = `hospitalQueueLiveEta:${dbPatient.token}`;
           let persistedLiveEtaSeconds: number | undefined;
@@ -3103,27 +3105,34 @@ function ETAPage({ onAnalyticsUpdate }: {
     };
 
     const loadSummaryData = async () => {
-      try {
-        const [analyticsResponse, doctorsResponse] = await Promise.all([
-          fetch("/api/analytics"),
-          fetch("/api/doctors")
-        ]);
+      const analyticsTask = fetch("/api/analytics")
+        .then(async response => {
+          if (!response.ok) {
+            throw new Error("Failed to load analytics");
+          }
 
-        if (!analyticsResponse.ok || !doctorsResponse.ok) {
-          throw new Error("Failed to load dashboard summary");
-        }
+          const analytics = await response.json();
+          setAnalyticsData(analytics);
+          onAnalyticsUpdate(analytics);
+        })
+        .catch(error => {
+          console.error("Failed to load analytics:", error);
+        });
 
-        const [analytics, doctors] = await Promise.all([
-          analyticsResponse.json(),
-          doctorsResponse.json()
-        ]);
+      const doctorsTask = fetch("/api/doctors")
+        .then(async response => {
+          if (!response.ok) {
+            throw new Error("Failed to load doctors");
+          }
 
-        setAnalyticsData(analytics);
-        onAnalyticsUpdate(analytics);
-        setDoctorsData(doctors);
-      } catch (error) {
-        console.error("Failed to load dashboard summary:", error);
-      }
+          const doctors = await response.json();
+          setDoctorsData(doctors);
+        })
+        .catch(error => {
+          console.error("Failed to load doctors:", error);
+        });
+
+      await Promise.all([analyticsTask, doctorsTask]);
     };
 
     loadQueueData();

@@ -413,15 +413,13 @@ def get_analytics():
             for row in weekly_rows
         }
 
+        cursor.execute("SELECT CURDATE() AS today")
+        today = cursor.fetchone()["today"]
+
         weekly_trend = []
 
         for offset in range(6, -1, -1):
-            cursor.execute(
-                "SELECT DATE(CURDATE() - INTERVAL %s DAY) AS date",
-                (offset,)
-            )
-            date_row = cursor.fetchone()
-            current_date = date_row["date"]
+            current_date = today - timedelta(days=offset)
 
             values = weekly_counts.get(
                 current_date,
@@ -1090,7 +1088,7 @@ def get_patient_by_token(token):
                 ON p.doctor_id = d.doctor_id
             LEFT JOIN queue q
                 ON q.patient_id = p.patient_id
-            WHERE UPPER(p.token) = UPPER(%s)
+            WHERE p.token = %s
               AND p.registered_at >= CURDATE()
               AND p.registered_at < CURDATE() + INTERVAL 1 DAY
             ORDER BY q.queue_id DESC
@@ -2254,8 +2252,7 @@ def get_queue():
 
     default_service_time = 20
 
-    # Build an independent live queue for each doctor and department.
-    # A doctor's patients must never affect another doctor's ETA.
+    # Build independent ETA state for each doctor and department.
     doctor_queue_state = {}
 
     for row in rows:
@@ -2266,21 +2263,19 @@ def get_queue():
             doctor_queue_state[doctor_key] = {
                 "consulting_remaining": 0,
                 "consulting_remaining_seconds": 0,
-                "waiting": []
+                "waiting_position": 0,
+                "cumulative_wait": 0,
+                "cumulative_wait_seconds": 0
             }
 
         state = doctor_queue_state[doctor_key]
 
-        service_time = department_service_times.get(
-            department,
-            default_service_time
-        )
-
         if row["status"] == "consulting":
-            # An active consultation contributes one full average service slot.
-            # This prevents long-running consultations from producing a false 0-minute ETA.
+            service_time = department_service_times.get(
+                department,
+                default_service_time
+            )
             remaining_seconds = service_time * 60
-
             remaining = (remaining_seconds + 59) // 60
 
             row["queue_position"] = 0
@@ -2296,14 +2291,18 @@ def get_queue():
                 state["consulting_remaining_seconds"], remaining_seconds
             )
 
-        else:
-            state["waiting"].append(row)
+    # Initialize each doctor's waiting time after all consulting
+    # patients have been accounted for.
+    for state in doctor_queue_state.values():
+        state["cumulative_wait"] = state["consulting_remaining"]
+        state["cumulative_wait_seconds"] = (
+            state["consulting_remaining_seconds"]
+        )
 
-    # Calculate waiting positions and live wait after the
-    # current consultation is known for every department.
     waiting_count = 0
     result = []
 
+    # Calculate each waiting patient's position and ETA in one pass.
     for row in rows:
         department = row["department"] or "General"
         doctor_key = (department, row["doctor_id"])
@@ -2311,29 +2310,18 @@ def get_queue():
 
         if row["status"] == "waiting":
             waiting_count += 1
+            state["waiting_position"] += 1
 
-            waiting_rows = state["waiting"]
-            position = waiting_rows.index(row) + 1
+            row["queue_position"] = state["waiting_position"]
+            row["live_eta_minutes"] = state["cumulative_wait"]
+            row["live_eta_seconds"] = state["cumulative_wait_seconds"]
 
-            row["queue_position"] = position
-
-            # Live Wait means time until consultation STARTS.
-            # The first waiting patient waits only for the
-            # current consultation to finish. If no one is
-            # consulting, their wait is zero.
-            prior_wait = state["consulting_remaining"]
-            prior_wait_seconds = state["consulting_remaining_seconds"]
-
-            for prior_row in waiting_rows[:position - 1]:
-                prior_service_time = department_service_times.get(
-                    prior_row["department"] or "General",
-                    default_service_time
-                )
-                prior_wait += prior_service_time
-                prior_wait_seconds += prior_service_time * 60
-
-            row["live_eta_minutes"] = prior_wait
-            row["live_eta_seconds"] = prior_wait_seconds
+            service_time = department_service_times.get(
+                department,
+                default_service_time
+            )
+            state["cumulative_wait"] += service_time
+            state["cumulative_wait_seconds"] += service_time * 60
 
         if row["added_at"]:
             row["added_at"] = row["added_at"].isoformat()
