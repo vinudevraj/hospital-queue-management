@@ -11,6 +11,8 @@ import os
 import math
 import time
 import mysql.connector
+from mysql.connector.pooling import MySQLConnectionPool
+import threading
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,19 +76,36 @@ def get_department_service_times(cursor):
     return service_times
 
 
+_db_pool = None
+_db_pool_lock = threading.Lock()
+
+
 def get_db_connection():
-    connection = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        port=int(os.getenv("DB_PORT", "3306")),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
-        ssl_ca=os.getenv("DB_SSL_CA") or None,
-        ssl_verify_cert=True if os.getenv("DB_SSL_CA") else False
-    )
+    global _db_pool
+
+    if _db_pool is None:
+        with _db_pool_lock:
+            if _db_pool is None:
+                _db_pool = MySQLConnectionPool(
+                    pool_name="hospital_queue_pool",
+                    pool_size=3,
+                    pool_reset_session=True,
+                    host=os.getenv("DB_HOST"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                    user=os.getenv("DB_USER"),
+                    password=os.getenv("DB_PASSWORD"),
+                    database=os.getenv("DB_NAME"),
+                    ssl_ca=os.getenv("DB_SSL_CA") or None,
+                    ssl_verify_cert=True if os.getenv("DB_SSL_CA") else False
+                )
+
+    connection = _db_pool.get_connection()
     cursor = connection.cursor()
-    cursor.execute("SET time_zone = '+05:30'")
-    cursor.close()
+    try:
+        cursor.execute("SET time_zone = '+05:30'")
+    finally:
+        cursor.close()
+
     return connection
 def staff_required(func):
     @wraps(func)
