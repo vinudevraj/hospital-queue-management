@@ -2396,6 +2396,8 @@ def call_next_patient():
 
         query += """
             ORDER BY
+                CASE WHEN COALESCE(p.is_emergency, 0) = 1
+                     THEN 0 ELSE 1 END ASC,
                 q.priority ASC,
                 q.added_at ASC,
                 q.queue_id ASC
