@@ -3076,7 +3076,9 @@ function PatientPage() {
   );
 }
 
-function ETAPage() {
+function ETAPage({ onAnalyticsUpdate }: {
+  onAnalyticsUpdate: (data: any) => void;
+}) {
   const [queueData, setQueueData] = useState<any>(null);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [doctorsData, setDoctorsData] = useState<any[]>([]);
@@ -3117,6 +3119,7 @@ function ETAPage() {
         ]);
 
         setAnalyticsData(analytics);
+        onAnalyticsUpdate(analytics);
         setDoctorsData(doctors);
       } catch (error) {
         console.error("Failed to load dashboard summary:", error);
@@ -3748,34 +3751,7 @@ function DoctorsPage({ patients }: { patients: Patient[] }) {
 
 // ─── Analytics Dashboard ──────────────────────────────────────────────────────
 
-function AnalyticsPage() {
-  const [analytics, setAnalytics] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadAnalytics = async () => {
-    try {
-      const response = await fetch("/api/analytics");
-
-      if (!response.ok) {
-        throw new Error("Failed to load analytics");
-      }
-
-      const data = await response.json();
-      setAnalytics(data);
-    } catch (error) {
-      console.error("Failed to load analytics:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAnalytics();
-
-    const interval = setInterval(loadAnalytics, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
+function AnalyticsPage({ analytics }: { analytics: any }) {
 
   const metrics = [
     {
@@ -3970,7 +3946,7 @@ function AnalyticsPage() {
   return (
     <div className="min-h-screen py-8 px-4" style={{ backgroundColor: "#DDEEF8" }}>
       <div className="max-w-7xl mx-auto">
-        {loading && !analytics ? (
+        {!analytics ? (
           <GlassCard className="p-8 mb-7">
             <div className="text-center" style={{ color: "#5a7a8a" }}>
               Loading analytics...
@@ -4826,6 +4802,7 @@ function StaffLoginPage({ requiredRole, onLogin, onBack }: {
 export default function App() {
   const [page, setPage] = useState<Page>("landing");
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [staffRole, setStaffRole] = useState<"admin" | "receptionist" | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -4942,8 +4919,8 @@ export default function App() {
         {page === "patient" && <PatientPage />}
         {page === "eta" && isAuthenticated && (
           <>
-            <ETAPage />
-            <AnalyticsPage />
+            <ETAPage onAnalyticsUpdate={setAnalyticsData} />
+            <AnalyticsPage analytics={analyticsData} />
           </>
         )}
         {page === "doctors" && isAuthenticated && staffRole === "admin" && (
