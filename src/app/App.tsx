@@ -2434,7 +2434,7 @@ function PatientPage({ onNav }: { onNav: (page: Page) => void }) {
                   className="w-5 h-5"
                   style={{ color: "#3F8EAC" }}
                 />
-                <h2 className="text-lg font-bold" style={{ color: "#173B4D" }}>
+                <h2 id="patient-registration" className="text-lg font-bold" style={{ color: "#173B4D" }}>
                   Online Patient Registration
                 </h2>
               </div>
@@ -2780,6 +2780,7 @@ function PatientPage({ onNav }: { onNav: (page: Page) => void }) {
           }}
         >
           <h2
+            id="patient-queue"
             className="text-lg font-bold mb-6"
             style={{ color: "#173B4D" }}
           >
@@ -3067,12 +3068,17 @@ function PatientPage({ onNav }: { onNav: (page: Page) => void }) {
   );
 }
 
-function QueueBeePage({ onBack }: { onBack: () => void }) {
+function QueueBeePage({
+  onBack,
+  onNavigateToPatientSection,
+}: {
+  onBack: () => void;
+  onNavigateToPatientSection: (section: string) => void;
+}) {
   const [section, setSection] = useState("chat");
   const [question, setQuestion] = useState("");
   const [term, setTerm] = useState("");
-  const [language, setLanguage] = useState("English");
-  const [messages, setMessages] = useState<{ role: string; text: string }[]>([
+  const [messages, setMessages] = useState<{ role: string; text: string; action?: { label: string; section: string } }[]>([
     {
       role: "bot",
       text: "Hello! I'm QueueBee, your Smart Hospital Companion. Ask me about hospital visits, common medical terms, or how to prepare for your appointment."
@@ -3124,6 +3130,36 @@ function QueueBeePage({ onBack }: { onBack: () => void }) {
     }
 
     return "I'm QueueBee, your guide to using this hospital queue management system. Choose one of the questions above to learn about registration, appointments, tokens, queue priorities or waiting-time updates. For personal medical decisions, please speak with your healthcare professional.";
+  };
+
+  const getAction = (value: string) => {
+    const q = value.toLowerCase();
+
+    if (
+      q.includes("emergency") ||
+      q.includes("chest pain") ||
+      q.includes("breath")
+    ) return undefined;
+
+    if (
+      q.includes("before visiting") ||
+      q.includes("appointment") ||
+      q.includes("prepare")
+    ) {
+      return {
+        label: "Open Registration & Appointments",
+        section: "patient-registration",
+      };
+    }
+
+    if (q.includes("consultation")) {
+      return {
+        label: "Go to My Queue",
+        section: "patient-queue",
+      };
+    }
+
+    return undefined;
   };
 
   const sendQuestion = () => {
@@ -3209,16 +3245,6 @@ function QueueBeePage({ onBack }: { onBack: () => void }) {
               {tab.label}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-2 text-sm" style={{ color: "#5a7a8a" }}>
-            <span>Language</span>
-            <select value={language} onChange={e => setLanguage(e.target.value)}
-              className="rounded-lg border px-2 py-2 bg-white"
-              style={{ borderColor: "#D9EAF0" }}>
-              <option>English</option>
-              <option>Hindi</option>
-              <option>Marathi</option>
-            </select>
-          </div>
         </div>
 
         {section === "chat" && (
@@ -3243,6 +3269,20 @@ function QueueBeePage({ onBack }: { onBack: () => void }) {
                       color: message.role === "user" ? "white" : "#294B5B"
                     }}>
                     {message.text}
+                    {message.role === "bot" && message.action && (
+                      <button
+                        onClick={() => onNavigateToPatientSection(message.action!.section)}
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold border"
+                        style={{
+                          borderColor: "#B9DDE8",
+                          backgroundColor: "white",
+                          color: "#3F8EAC",
+                        }}
+                      >
+                        {message.action.label}
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -3267,7 +3307,11 @@ function QueueBeePage({ onBack }: { onBack: () => void }) {
                     onClick={() => setMessages(current => [
                       ...current,
                       { role: "user", text: prompt },
-                      { role: "bot", text: getReply(prompt) }
+                      {
+                        role: "bot",
+                        text: getReply(prompt),
+                        action: getAction(prompt),
+                      }
                     ])}
                     className="rounded-xl p-4 text-left text-sm font-medium border transition-all hover:shadow-md"
                     style={{
@@ -5110,6 +5154,7 @@ function StaffLoginPage({ requiredRole, onLogin, onBack }: {
 
 export default function App() {
   const [page, setPage] = useState<Page>("landing");
+  const [patientTargetSection, setPatientTargetSection] = useState<string | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -5123,6 +5168,20 @@ export default function App() {
       behavior: "smooth",
     });
   }, [page]);
+
+  useEffect(() => {
+    if (page !== "patient" || !patientTargetSection) return;
+
+    const target = patientTargetSection;
+    requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    setPatientTargetSection(null);
+  }, [page, patientTargetSection]);
 
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
@@ -5226,7 +5285,15 @@ export default function App() {
           <ReceptionPage patients={patients} setPatients={setPatients} />
         )}
         {page === "patient" && <PatientPage onNav={setPage} />}
-        {page === "queuebee" && <QueueBeePage onBack={() => setPage("patient")} />}
+        {page === "queuebee" && (
+          <QueueBeePage
+            onBack={() => setPage("patient")}
+            onNavigateToPatientSection={section => {
+              setPatientTargetSection(section);
+              setPage("patient");
+            }}
+          />
+        )}
         {page === "eta" && isAuthenticated && (
           <>
             <ETAPage onAnalyticsUpdate={setAnalyticsData} />
