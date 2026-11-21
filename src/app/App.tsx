@@ -799,43 +799,9 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
         (dbPatient: any) => {
           const livePatient = liveQueueByToken.get(dbPatient.token);
 
-          const liveEtaStorageKey = `hospitalQueueLiveEta:${dbPatient.token}`;
-          let persistedLiveEtaSeconds: number | undefined;
-
-          if (
-            dbPatient.status === "waiting" &&
-            livePatient?.live_eta_seconds != null
-          ) {
-            const serverEtaSeconds = Math.max(
-              0,
-              Number(livePatient.live_eta_seconds)
-            );
-
-            const storedDeadline = Number(
-              localStorage.getItem(liveEtaStorageKey)
-            );
-
-            const hasValidDeadline =
-              Number.isFinite(storedDeadline) && storedDeadline > 0;
-
-            const deadline = hasValidDeadline
-              ? storedDeadline
-              : Date.now() + serverEtaSeconds * 1000;
-
-            if (!hasValidDeadline) {
-              localStorage.setItem(
-                liveEtaStorageKey,
-                String(deadline)
-              );
-            }
-
-            persistedLiveEtaSeconds = Math.max(
-              0,
-              Math.ceil((deadline - Date.now()) / 1000)
-            );
-          } else if (dbPatient.status !== "waiting") {
-            localStorage.removeItem(liveEtaStorageKey);
-          }
+          localStorage.removeItem(
+            `hospitalQueueLiveEta:${dbPatient.token}`
+          );
 
           return {
             patient_id: dbPatient.patient_id,
@@ -853,12 +819,8 @@ function ReceptionPage({ patients, setPatients }: { patients: Patient[]; setPati
                 : `${dbPatient.predicted_wait_time ?? 0} min`,
             isEmergency: Boolean(dbPatient.is_emergency),
             waitMinutes: dbPatient.predicted_wait_time ?? 0,
-            liveEta:
-              persistedLiveEtaSeconds !== undefined
-                ? Math.ceil(persistedLiveEtaSeconds / 60)
-                : livePatient?.live_eta_minutes,
-            liveEtaSeconds:
-              persistedLiveEtaSeconds ?? livePatient?.live_eta_seconds,
+            liveEta: livePatient?.live_eta_minutes,
+            liveEtaSeconds: livePatient?.live_eta_seconds,
             actualWaitSeconds:
               dbPatient.actual_wait_seconds == null
                 ? undefined
